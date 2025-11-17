@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Sprout** is a lightweight web application built with [Deno](https://deno.land/) and the [Hono](https://hono.dev/) web framework. This is a minimal, modern web server project leveraging Deno's built-in TypeScript support and Hono's fast, Express-like API.
+**Sprout** is a lightweight web application built with [Deno](https://deno.land/) and the [Hono](https://hono.dev/) web framework. This project is a modern, full-featured starter kit leveraging Deno's built-in TypeScript support and Hono's fast, Express-like API.
 
 **Current State**: Early stage / minimal setup with a single "Hello World" endpoint.
 
@@ -11,7 +11,8 @@
 - **Runtime**: Deno (latest stable)
 - **Web Framework**: Hono v4.10.6+
 - **Language**: TypeScript (via Deno's native support)
-- **JSX Support**: Precompiled JSX with Hono's JSX runtime
+- **JSX Support**: Precompiled JSX with Hono's JSX runtime (SSR ONLY)
+- **Hotwire**: The project will integrate with [Hotwire Turbo](https://turbo.hotwired.dev/) and [Hotwire Stimulus](https://stimulus.hotwired.dev/).
 
 ## Project Structure
 
@@ -28,14 +29,42 @@ sprout/
 
 ```
 sprout/
-├── main.ts             # Entry point
+├── src/main.ts         # Entry point
+├── src/features/       # Each feature will have a subdirectory here
 ├── deno.json           # Configuration
-├── routes/             # Route handlers (recommended)
-├── middleware/         # Custom middleware (recommended)
-├── lib/                # Shared utilities and helpers
-├── types/              # TypeScript type definitions
+├── src/shared/middleware/         # Custom middleware (recommended)
+├── src/shared/components/         # Custom JSX components. Will use only SSR JSX
+├── src/shared/layouts/            # Custom JSX components
+├── src/shared/lib/                # Shared utilities and helpers
+├── src/shared/lib/hotwire/        # Hotwire turbo intregration
+├── src/shared/types/              # TypeScript type definitions
 ├── static/             # Static assets (if needed)
-└── tests/              # Test files
+```
+
+#### Structure of features
+
+Each feature will be created inside `sprout/src/features/`.
+Each feature will define a router. The `src/main.ts` file will automatically scan all folders and subfolders in `features` to find router types to import them and register their routes.
+
+```
+sprout/
+├── src/features/example-feature/
+├── src/features/example-feature/index.ts # router file for the feature
+├── src/features/example-feature/actions/ # Individual actions for the feature, such as example_create.ts, example_read.ts
+├── src/features/example-feature/views/ # JSX views used in the feature.
+├── src/features/example-feature/... # shared files used ONLY in the feature
+```
+
+When a feature is more complex, for example when it spans the user frontend and the admin panel the feature can be divided in subfolders.
+Example:
+```
+sprout/
+├── src/features/example-feature/
+├── src/features/example-feature/admin/index.ts # router file for the feature in the admin panel
+├── src/features/example-feature/admin/... # all the other files
+├── src/features/example-feature/frontend/index.ts # router 
+file for the feature in the frontend site
+├── src/features/example-feature/frontend/... # all the other files
 ```
 
 ## Development Workflow
@@ -62,7 +91,7 @@ The server will start and listen on the default port (typically 8000).
 Currently, no test framework is configured. When adding tests:
 
 1. Use Deno's built-in test runner
-2. Place test files adjacent to source files or in a `tests/` directory
+2. Place test files adjacent to source files. Each feature will have a test file for each action. There can also be a test file for the router that tests calling routes.
 3. Name test files with `.test.ts` suffix
 4. Run with: `deno test --allow-net`
 
@@ -98,13 +127,13 @@ deno cache --lock=deno.lock --lock-write main.ts
 1. **TypeScript First**: Use TypeScript for all code
 2. **Formatting**: Use Deno's built-in formatter (`deno fmt`)
 3. **Linting**: Follow Deno's linting rules (`deno lint`)
-4. **Imports**: Use explicit file extensions (`.ts`) in imports
+4. **Imports**: Use explicit file extensions (`.ts`, `.tsx`) in imports
 5. **No npm_modules**: Deno doesn't use `node_modules`; dependencies are cached globally
 
 ### File Naming
 
-- **Source files**: `camelCase.ts` or `kebab-case.ts`
-- **Test files**: `fileName.test.ts`
+- **Source files**:`kebab-case.ts`
+- **Test files**: `file-name.test.ts`
 - **Type definitions**: `types.ts` or specific `*.types.ts`
 
 ### Code Style
@@ -289,9 +318,8 @@ app.get('/page', (c) => {
 - [ ] Add logging middleware
 - [ ] Set up environment variable configuration
 - [ ] Add unit tests
-- [ ] Add API documentation (OpenAPI/Swagger)
 - [ ] Configure CORS for API access
-- [ ] Add database integration (if needed)
+- [ ] Add database integration with Drizzle ORM using code first approach, without migration files.
 
 ---
 
