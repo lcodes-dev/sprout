@@ -4,8 +4,10 @@
 .env
 
 # Build output
-static/css/
-static/js/
+static/css/*.css
+static/js/*.js
+static/css/*.map
+static/js/*.map
 
 # Deno
 deno.lock

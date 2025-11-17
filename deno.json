@@ -8,6 +8,7 @@
     "@hotwired/turbo": "npm:@hotwired/turbo@^8.0.0",
     "@std/path": "jsr:@std/path@^0.223.0",
     "@std/fs": "jsr:@std/fs@^0.223.0",
+    "@std/assert": "jsr:@std/assert@^0.223.0",
     "concurrently": "npm:concurrently@^9.1.0"
   },
   "tasks": {
@@ -17,7 +18,8 @@
     "build:css": "deno run --allow-read --allow-write --allow-env --allow-run scripts/build-css.ts",
     "build:js": "deno run --allow-read --allow-write --allow-env --allow-run scripts/build-js.ts",
     "watch:css": "deno run --allow-read --allow-write --allow-env --allow-run scripts/build-css.ts --watch",
-    "watch:js": "deno run --allow-read --allow-write --allow-env --allow-run scripts/build-js.ts --watch"
+    "watch:js": "deno run --allow-read --allow-write --allow-env --allow-run scripts/build-js.ts --watch",
+    "test": "deno test --allow-net --allow-read"
   },
   "compilerOptions": {
     "jsx": "precompile",
