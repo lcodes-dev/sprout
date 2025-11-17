@@ -48,6 +48,11 @@ deno task start
 sprout/
 ├── src/                     # Application source code
 │   ├── main.ts              # Application entry point
+│   ├── features/            # Feature-based modules
+│   │   └── landing/         # Landing page feature
+│   │       ├── index.ts     # Feature router
+│   │       └── views/       # Feature views
+│   │           └── HomePage.tsx
 │   └── shared/              # Shared application code
 │       ├── layouts/         # Layout components
 │       │   └── BaseLayout.tsx
@@ -60,14 +65,12 @@ sprout/
 │       ├── lib/             # Shared utilities
 │       └── main.ts          # Frontend entry point
 ├── scripts/                 # Build scripts
-│   ├── build.ts             # Unified build script
 │   ├── build-css.ts         # CSS build script (Tailwind v4)
-│   ├── build-js.ts          # JavaScript build script (esbuild)
-│   └── dev.ts               # Development server (uses concurrently)
+│   └── build-js.ts          # JavaScript build script (esbuild)
 ├── static/                  # Built assets (gitignored)
 │   ├── css/                 # Compiled CSS
 │   └── js/                  # Bundled JavaScript
-└── deno.json                # Deno configuration and dependencies
+└── deno.json                # Deno configuration and tasks
 ```
 
 ## Tech Stack
