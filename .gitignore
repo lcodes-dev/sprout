@@ -1,1 +1,11 @@
 .vscode
+
+# Environment files
+.env
+
+# Build output
+static/css/
+static/js/
+
+# Deno
+deno.lock
