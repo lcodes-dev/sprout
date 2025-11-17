@@ -1,0 +1,25 @@
+/* Tailwind CSS Directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom Base Styles */
+@layer base {
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-white text-gray-900;
+  }
+}
+
+/* Custom Component Styles */
+@layer components {
+  /* Add your custom component styles here */
+}
+
+/* Custom Utility Styles */
+@layer utilities {
+  /* Add your custom utility styles here */
+}

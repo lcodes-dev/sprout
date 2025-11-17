@@ -1,9 +1,23 @@
 {
   "imports": {
-    "hono": "jsr:@hono/hono@^4.10.6"
+    "hono": "jsr:@hono/hono@^4.10.6",
+    "tailwindcss": "npm:tailwindcss@^3.4.0",
+    "autoprefixer": "npm:autoprefixer@^10.4.0",
+    "postcss": "npm:postcss@^8.4.0",
+    "esbuild": "npm:esbuild@^0.19.0",
+    "@hotwired/stimulus": "npm:@hotwired/stimulus@^3.2.0",
+    "@hotwired/turbo": "npm:@hotwired/turbo@^8.0.0",
+    "@std/path": "jsr:@std/path@^0.223.0",
+    "@std/fs": "jsr:@std/fs@^0.223.0"
   },
   "tasks": {
-    "start": "deno run --allow-net main.ts"
+    "start": "deno run --allow-net --allow-read main.ts",
+    "dev": "deno run --allow-net --allow-read --allow-write --allow-env --allow-run scripts/dev.ts",
+    "build": "deno run --allow-read --allow-write --allow-env --allow-run scripts/build.ts",
+    "build:css": "deno run --allow-read --allow-write --allow-env --allow-run scripts/build-css.ts",
+    "build:js": "deno run --allow-read --allow-write --allow-env --allow-run scripts/build-js.ts",
+    "watch:css": "deno run --allow-read --allow-write --allow-env --allow-run scripts/build-css.ts --watch",
+    "watch:js": "deno run --allow-read --allow-write --allow-env --allow-run scripts/build-js.ts --watch"
   },
   "compilerOptions": {
     "jsx": "precompile",
