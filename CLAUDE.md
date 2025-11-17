@@ -352,6 +352,106 @@ import { serveStatic } from 'hono/deno'
 app.use('/static/*', serveStatic({ root: './' }))
 ```
 
+## Database (Drizzle ORM)
+
+The project uses **Drizzle ORM** with a **code-first approach** (no migrations). Database schema is defined in TypeScript and synced directly to the database.
+
+### Database Setup
+
+**Quick Start**:
+```bash
+# 1. Initialize database directory
+deno task db:init
+
+# 2. Sync schema to database
+deno task db:push
+
+# 3. (Optional) Launch Drizzle Studio
+deno task db:studio
+```
+
+### Database Configuration
+
+- **Config**: `src/shared/db/config.ts`
+- **Connection**: `src/shared/db/connection.ts`
+- **Schemas**: `src/shared/db/schema/`
+- **Queries**: `src/shared/db/queries/`
+
+**Environment Variables**:
+- `DATABASE_URL`: Database connection URL (default: `file:./data/sprout.db`)
+- `DATABASE_AUTH_TOKEN`: Auth token for remote databases (optional)
+- `DENO_ENV`: Set to `development` for verbose logging
+
+### Using the Database
+
+**Import the database instance**:
+```typescript
+import { db } from "./shared/db/connection.ts"
+import { users } from "./shared/db/schema/users.ts"
+```
+
+**Basic queries**:
+```typescript
+// Using Drizzle ORM directly
+const allUsers = await db.select().from(users)
+
+// Using query utilities (recommended)
+import { getAllUsers, createUser } from "./shared/db/queries/users.ts"
+const users = await getAllUsers()
+const newUser = await createUser({
+  email: "user@example.com",
+  name: "John Doe",
+  passwordHash: "hashed_password"
+})
+```
+
+### Adding New Tables
+
+1. Create schema file in `src/shared/db/schema/[table-name].ts`
+2. Export from `src/shared/db/schema/index.ts`
+3. Run `deno task db:push` to sync schema
+4. Create query utilities in `src/shared/db/queries/[table-name].ts`
+5. Write tests in `src/shared/db/queries/[table-name].test.ts`
+
+**Example schema**:
+```typescript
+// src/shared/db/schema/posts.ts
+import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { sql } from "drizzle-orm"
+import { users } from "./users.ts"
+
+export const posts = sqliteTable("posts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+})
+
+export type Post = typeof posts.$inferSelect
+export type NewPost = typeof posts.$inferInsert
+```
+
+### Database Tasks
+
+- `deno task db:init` - Initialize database directory
+- `deno task db:push` - Sync schema changes to database
+- `deno task db:studio` - Launch Drizzle Studio (database UI)
+
+### Code-First Workflow
+
+The code-first approach means:
+- ✅ Schema defined in TypeScript
+- ✅ Changes pushed directly to database
+- ❌ No migration files generated
+- ⚡ Faster development iteration
+
+**When to use code-first**: Small to medium projects, rapid prototyping, solo/small teams
+
+**When to use migrations**: Large production systems, strict schema controls, rollback requirements
+
+See `src/shared/db/README.md` for detailed documentation.
+
 ## Git Workflow
 
 - **Branch naming**: Use descriptive branch names (e.g., `feature/add-user-auth`, `fix/cors-issue`)
@@ -518,12 +618,12 @@ app.use('/static/*', serveStatic({ root: './' }))
   - [ ] Configure allowed origins
   - [ ] Document CORS settings
 
-- [ ] **Add database integration**
-  - [ ] Integrate Drizzle ORM using code-first approach
-  - [ ] Set up database connection
-  - [ ] Create example schema
-  - [ ] Add database utilities
-  - [ ] Document database workflow (no migrations)
+- [x] **Add database integration** ✅
+  - [x] Integrate Drizzle ORM using code-first approach
+  - [x] Set up database connection
+  - [x] Create example schema (users table)
+  - [x] Add database utilities (query helpers)
+  - [x] Document database workflow (no migrations)
 
 ### Phase 3: Production Readiness
 
