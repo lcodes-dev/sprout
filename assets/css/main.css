@@ -1,16 +1,30 @@
-/* Tailwind CSS Directives */
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind CSS v4 */
+@import "tailwindcss";
+
+/* Content Sources - Tell Tailwind where to find classes */
+@source "../src/**/*.{ts,tsx}";
+
+/* Custom Theme Configuration */
+@theme {
+  /* Add custom colors, fonts, etc. here */
+  /* Example:
+  --color-primary: #3b82f6;
+  --font-sans: system-ui, sans-serif;
+  */
+}
 
 /* Custom Base Styles */
 @layer base {
   html {
-    @apply antialiased;
+    font-feature-settings: "kern";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   body {
-    @apply bg-white text-gray-900;
+    background-color: white;
+    color: rgb(17 24 39); /* gray-900 */
   }
 }
 

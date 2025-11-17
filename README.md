@@ -46,33 +46,38 @@ deno task start
 
 ```
 sprout/
+├── src/                     # Application source code
+│   ├── main.ts              # Application entry point
+│   └── shared/              # Shared application code
+│       ├── layouts/         # Layout components
+│       │   └── BaseLayout.tsx
+│       └── components/      # Reusable components
 ├── assets/                  # Source assets
 │   ├── css/                 # CSS source files
-│   │   └── main.css         # Tailwind CSS entry point
+│   │   └── main.css         # Tailwind CSS v4 entry point
 │   └── js/                  # Frontend JavaScript source
 │       ├── controllers/     # Stimulus controllers
 │       ├── lib/             # Shared utilities
 │       └── main.ts          # Frontend entry point
 ├── scripts/                 # Build scripts
 │   ├── build.ts             # Unified build script
-│   ├── build-css.ts         # CSS build script
-│   ├── build-js.ts          # JavaScript build script
-│   └── dev.ts               # Development server script
+│   ├── build-css.ts         # CSS build script (Tailwind v4)
+│   ├── build-js.ts          # JavaScript build script (esbuild)
+│   └── dev.ts               # Development server (uses concurrently)
 ├── static/                  # Built assets (gitignored)
 │   ├── css/                 # Compiled CSS
 │   └── js/                  # Bundled JavaScript
-├── deno.json                # Deno configuration
-├── tailwind.config.ts       # Tailwind CSS configuration
-└── main.ts                  # Application entry point
+└── deno.json                # Deno configuration and dependencies
 ```
 
 ## Tech Stack
 
 - **Runtime**: Deno
 - **Web Framework**: Hono
-- **CSS**: Tailwind CSS
+- **CSS**: Tailwind CSS v4 (CSS-first configuration)
 - **Frontend JS**: Hotwire (Turbo + Stimulus)
-- **Build Tools**: esbuild
+- **Build Tools**: esbuild, concurrently
+- **Process Management**: concurrently
 
 ## Learn More
 

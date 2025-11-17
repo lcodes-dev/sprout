@@ -2,54 +2,27 @@
 
 /**
  * Development Script
- * Runs the server with watch mode for CSS and JavaScript
+ * Runs the server with watch mode for CSS and JavaScript using concurrently
  */
 
 console.log("🚀 Starting development server...\n")
 
-// Start CSS watcher
-const cssWatcher = new Deno.Command("deno", {
-  args: ["task", "watch:css"],
-  stdout: "inherit",
-  stderr: "inherit",
-}).spawn()
-
-// Start JS watcher
-const jsWatcher = new Deno.Command("deno", {
-  args: ["task", "watch:js"],
-  stdout: "inherit",
-  stderr: "inherit",
-}).spawn()
-
-// Wait a bit for the watchers to start
-await new Promise((resolve) => setTimeout(resolve, 2000))
-
-// Start the server with watch mode
-console.log("\n🌐 Starting web server...\n")
-const server = new Deno.Command("deno", {
+const command = new Deno.Command("deno", {
   args: [
     "run",
-    "--allow-net",
-    "--allow-read",
-    "--watch",
-    "main.ts",
+    "-A",
+    "npm:concurrently@^9.1.0",
+    "-n", "CSS,JS,SERVER",
+    "-c", "cyan,magenta,green",
+    "deno task watch:css",
+    "deno task watch:js",
+    "deno run --allow-net --allow-read --watch src/main.ts",
   ],
   stdout: "inherit",
   stderr: "inherit",
-}).spawn()
+})
 
-// Handle cleanup on exit
-const cleanup = () => {
-  console.log("\n🛑 Shutting down...")
-  cssWatcher.kill()
-  jsWatcher.kill()
-  server.kill()
-  Deno.exit(0)
-}
+const process = command.spawn()
+const status = await process.status
 
-// Listen for termination signals
-Deno.addSignalListener("SIGINT", cleanup)
-Deno.addSignalListener("SIGTERM", cleanup)
-
-// Wait for server to exit
-await server.status
+Deno.exit(status.code)

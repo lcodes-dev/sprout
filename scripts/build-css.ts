@@ -2,50 +2,50 @@
 
 /**
  * CSS Build Script
- * Compiles Tailwind CSS from assets/css/main.css to static/css/main.css
+ * Compiles Tailwind CSS v4 from assets/css/main.css to static/css/main.css
  */
 
-import { join } from "jsr:@std/path@^0.223.0";
+import { join } from "@std/path"
 
-const watchMode = Deno.args.includes("--watch");
-const inputPath = join(Deno.cwd(), "assets", "css", "main.css");
-const outputPath = join(Deno.cwd(), "static", "css", "main.css");
-const configPath = join(Deno.cwd(), "tailwind.config.ts");
+const watchMode = Deno.args.includes("--watch")
+const inputPath = join(Deno.cwd(), "assets", "css", "main.css")
+const outputPath = join(Deno.cwd(), "static", "css", "main.css")
 
 async function buildCSS() {
-  console.log("🎨 Building CSS...");
+  console.log("🎨 Building CSS with Tailwind v4...")
 
   const args = [
-    "npm:tailwindcss@^3.4.0",
+    "run",
+    "-A",
+    "npm:@tailwindcss/cli@^4.0.0",
     "-i", inputPath,
     "-o", outputPath,
-    "-c", configPath,
-  ];
+  ]
 
   if (watchMode) {
-    args.push("--watch");
-    console.log("👀 Watching for CSS changes...");
+    args.push("--watch")
+    console.log("👀 Watching for CSS changes...")
   } else {
-    args.push("--minify");
+    args.push("--minify")
   }
 
   const command = new Deno.Command("deno", {
-    args: ["run", "-A", ...args],
+    args,
     stdout: "inherit",
     stderr: "inherit",
-  });
+  })
 
-  const process = command.spawn();
-  const status = await process.status;
+  const process = command.spawn()
+  const status = await process.status
 
   if (!watchMode) {
     if (status.success) {
-      console.log("✅ CSS built successfully!");
+      console.log("✅ CSS built successfully!")
     } else {
-      console.error("❌ CSS build failed!");
-      Deno.exit(1);
+      console.error("❌ CSS build failed!")
+      Deno.exit(1)
     }
   }
 }
 
-await buildCSS();
+await buildCSS()
