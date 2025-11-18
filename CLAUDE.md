@@ -555,6 +555,135 @@ If this command completes successfully, you're ready to commit.
 5. **CORS**: Configure CORS middleware if building an API
 6. **Headers**: Set security headers (CSP, HSTS, etc.)
 
+## Feature Flag System
+
+The application includes a comprehensive feature flag management system that allows administrators to control feature rollouts with percentage-based targeting.
+
+### Overview
+
+Feature flags (also known as feature toggles) enable you to:
+- Enable/disable features without code deployment
+- Gradually roll out features to a percentage of users
+- A/B test new functionality
+- Quickly disable problematic features
+
+### Architecture
+
+The feature flag system consists of three main components:
+
+1. **Database Layer** (`src/db/schema/feature-flags.ts`)
+   - Stores feature flag configuration
+   - Tracks flag status, percentage rollout, and metadata
+
+2. **Cache Layer** (`src/shared/lib/feature-flags/cache.ts`)
+   - In-memory cache of all feature flags
+   - Automatically refreshes on application startup and flag changes
+   - Provides fast flag lookups without database queries
+
+3. **Utility Functions** (`src/shared/lib/feature-flags/index.ts`)
+   - `isFeatureEnabled(key: string, userId?: number): boolean`
+   - `getFeatureFlagPercentage(key: string): number`
+   - `refreshFeatureFlagCache(): Promise<void>`
+
+### Database Schema
+
+```typescript
+// src/db/schema/feature-flags.ts
+export const featureFlags = pgTable("feature_flags", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  active: boolean("active").notNull().default(false),
+  percentage: integer("percentage").notNull().default(0), // 0-100
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`)
+})
+```
+
+### Using Feature Flags
+
+**In route handlers:**
+```typescript
+import { isFeatureEnabled } from '@/shared/lib/feature-flags'
+
+app.get('/new-feature', async (c) => {
+  const userId = c.get('userId') // from auth middleware
+
+  if (!isFeatureEnabled('new_dashboard', userId)) {
+    return c.text('Feature not available', 404)
+  }
+
+  // Feature code here
+  return c.html(<NewDashboard />)
+})
+```
+
+**In views (JSX):**
+```typescript
+import { isFeatureEnabled } from '@/shared/lib/feature-flags'
+
+export const Dashboard: FC = () => {
+  const showNewUI = isFeatureEnabled('new_ui_redesign')
+
+  return (
+    <div>
+      {showNewUI ? <NewUI /> : <OldUI />}
+    </div>
+  )
+}
+```
+
+**Percentage-based rollout:**
+When a feature flag has a percentage set (e.g., 25%), the system will:
+1. If no userId is provided, use the percentage as a global probability
+2. If userId is provided, use deterministic hashing to ensure the same user always gets the same result
+3. Return true for approximately 25% of users
+
+### Admin Panel
+
+Administrators can manage feature flags through the admin panel at `/admin/feature-flags`:
+
+**Features:**
+- View all feature flags in a table
+- Toggle flags on/off with a switch
+- Edit percentage rollout with a slider
+- Create new feature flags
+- Delete existing flags
+- See last update timestamp
+
+**Components:**
+- `FeatureFlagsPage` - Main page layout
+- `FeatureFlagTable` - Table displaying all flags
+- `FeatureFlagRow` - Individual flag row with inline editing
+- `CreateFlagModal` - Modal for creating new flags
+- `DeleteConfirmModal` - Confirmation dialog for deletion
+
+**Interactivity:**
+- Uses Alpine.js for client-side state management
+- Uses Hotwire Turbo for form submissions and updates
+- Real-time UI updates without page refreshes
+- Optimistic UI updates for better UX
+
+### Cache Invalidation
+
+The cache is automatically refreshed when:
+1. Application starts up
+2. A flag is created, updated, or deleted via admin panel
+3. Manual refresh via `refreshFeatureFlagCache()`
+
+### Best Practices
+
+1. **Flag Naming**: Use descriptive, lowercase names with underscores (e.g., `new_checkout_flow`)
+2. **Cleanup**: Remove flags once features are fully rolled out
+3. **Testing**: Always test both enabled and disabled states
+4. **Documentation**: Document what each flag controls
+5. **Monitoring**: Track flag usage and performance impact
+
+### Security Considerations
+
+- Admin panel should be protected by authentication middleware
+- Feature flag keys should not contain sensitive information
+- Cache is stored in memory (lost on restart, but automatically rebuilt)
+- SQL injection prevented by Drizzle ORM parameterization
+
 ## Resources
 
 - [Node.js Documentation](https://nodejs.org/docs/latest/api/)
@@ -710,6 +839,225 @@ If this command completes successfully, you're ready to commit.
   - [x] Create example schema (users table)
   - [x] Add database utilities (query helpers)
   - [x] Document database workflow (no migrations)
+
+- [ ] **Feature Flag Management System**
+  - [ ] **Database Layer**
+    - [ ] Create `src/db/schema/feature-flags.ts`
+      - [ ] Define `featureFlags` table with pgTable
+      - [ ] Add fields: id (serial, primary key)
+      - [ ] Add fields: key (text, not null, unique)
+      - [ ] Add fields: active (boolean, not null, default false)
+      - [ ] Add fields: percentage (integer, not null, default 0)
+      - [ ] Add fields: updatedAt (timestamp, not null, auto-update)
+      - [ ] Export FeatureFlag and NewFeatureFlag types
+    - [ ] Export schema from `src/db/schema/index.ts`
+    - [ ] Run `npm run db:push` to sync schema
+
+  - [ ] **Query Utilities**
+    - [ ] Create `src/db/queries/feature-flags.ts`
+      - [ ] Implement `getAllFeatureFlags(): Promise<FeatureFlag[]>`
+      - [ ] Implement `getFeatureFlagByKey(key: string): Promise<FeatureFlag | undefined>`
+      - [ ] Implement `getFeatureFlagById(id: number): Promise<FeatureFlag | undefined>`
+      - [ ] Implement `createFeatureFlag(data: NewFeatureFlag): Promise<FeatureFlag>`
+      - [ ] Implement `updateFeatureFlag(id: number, data: Partial<NewFeatureFlag>): Promise<FeatureFlag | undefined>`
+      - [ ] Implement `deleteFeatureFlag(id: number): Promise<boolean>`
+      - [ ] Implement `toggleFeatureFlag(id: number): Promise<FeatureFlag | undefined>`
+      - [ ] Add comprehensive JSDoc documentation
+    - [ ] Create `src/db/queries/feature-flags.test.ts`
+      - [ ] Test getAllFeatureFlags with empty database
+      - [ ] Test getAllFeatureFlags with multiple flags
+      - [ ] Test getFeatureFlagByKey with existing and non-existing keys
+      - [ ] Test getFeatureFlagById with valid and invalid IDs
+      - [ ] Test createFeatureFlag with valid data
+      - [ ] Test createFeatureFlag with duplicate key (should fail)
+      - [ ] Test updateFeatureFlag for active status
+      - [ ] Test updateFeatureFlag for percentage
+      - [ ] Test deleteFeatureFlag with existing and non-existing IDs
+      - [ ] Test toggleFeatureFlag switching from false to true and vice versa
+
+  - [ ] **Cache System**
+    - [ ] Create `src/shared/lib/feature-flags/cache.ts`
+      - [ ] Define in-memory cache Map<string, FeatureFlag>
+      - [ ] Implement `initializeCache(): Promise<void>` - loads all flags on startup
+      - [ ] Implement `getFromCache(key: string): FeatureFlag | undefined`
+      - [ ] Implement `getAllFromCache(): FeatureFlag[]`
+      - [ ] Implement `updateCache(flag: FeatureFlag): void`
+      - [ ] Implement `removeFromCache(key: string): void`
+      - [ ] Implement `refreshCache(): Promise<void>` - reloads all flags
+      - [ ] Add error handling and logging
+    - [ ] Create `src/shared/lib/feature-flags/cache.test.ts`
+      - [ ] Test initializeCache populates cache correctly
+      - [ ] Test getFromCache returns correct flag
+      - [ ] Test getFromCache returns undefined for missing key
+      - [ ] Test getAllFromCache returns all cached flags
+      - [ ] Test updateCache adds new flag
+      - [ ] Test updateCache updates existing flag
+      - [ ] Test removeFromCache removes flag
+      - [ ] Test refreshCache reloads all flags
+
+  - [ ] **Utility Functions**
+    - [ ] Create `src/shared/lib/feature-flags/index.ts`
+      - [ ] Implement `isFeatureEnabled(key: string, userId?: number): boolean`
+        - [ ] Check if flag exists in cache
+        - [ ] If not active, return false
+        - [ ] If percentage is 0, return false
+        - [ ] If percentage is 100, return true
+        - [ ] If userId provided, use deterministic hash (userId % 100 < percentage)
+        - [ ] If no userId, use random probability based on percentage
+      - [ ] Implement `getFeatureFlagPercentage(key: string): number`
+        - [ ] Return percentage from cache or 0 if not found
+      - [ ] Implement `getFeatureFlag(key: string): FeatureFlag | undefined`
+        - [ ] Return flag from cache
+      - [ ] Export cache management functions (initializeCache, refreshCache)
+      - [ ] Add comprehensive JSDoc documentation
+    - [ ] Create `src/shared/lib/feature-flags/index.test.ts`
+      - [ ] Test isFeatureEnabled returns false for non-existent flag
+      - [ ] Test isFeatureEnabled returns false when flag is inactive
+      - [ ] Test isFeatureEnabled returns false when percentage is 0
+      - [ ] Test isFeatureEnabled returns true when percentage is 100
+      - [ ] Test isFeatureEnabled with userId uses deterministic logic
+      - [ ] Test isFeatureEnabled without userId uses probability
+      - [ ] Test getFeatureFlagPercentage returns correct value
+      - [ ] Test getFeatureFlagPercentage returns 0 for missing flag
+      - [ ] Test getFeatureFlag returns correct flag
+      - [ ] Test getFeatureFlag returns undefined for missing flag
+
+  - [ ] **Application Initialization**
+    - [ ] Update `src/main.ts`
+      - [ ] Import `initializeCache` from feature flags
+      - [ ] Call `initializeCache()` before starting server
+      - [ ] Add error handling for cache initialization
+      - [ ] Log successful cache initialization
+
+  - [ ] **Admin Feature Structure**
+    - [ ] Create directory `src/features/feature-flags/`
+    - [ ] Create directory `src/features/feature-flags/admin/`
+    - [ ] Create directory `src/features/feature-flags/admin/actions/`
+    - [ ] Create directory `src/features/feature-flags/admin/views/`
+    - [ ] Create directory `src/features/feature-flags/admin/components/`
+
+  - [ ] **Admin Routes**
+    - [ ] Create `src/features/feature-flags/admin/index.tsx`
+      - [ ] Create Hono router for `/admin/feature-flags`
+      - [ ] GET `/` - display feature flags page
+      - [ ] POST `/` - create new feature flag
+      - [ ] PATCH `/:id/toggle` - toggle flag active status
+      - [ ] PATCH `/:id/percentage` - update flag percentage
+      - [ ] DELETE `/:id` - delete feature flag
+      - [ ] Import all action handlers
+      - [ ] Add error handling middleware
+    - [ ] Create `src/features/feature-flags/admin/index.test.ts`
+      - [ ] Test GET / returns feature flags page
+      - [ ] Test POST / creates new flag and refreshes cache
+      - [ ] Test POST / validates input (key required, percentage 0-100)
+      - [ ] Test POST / returns error for duplicate key
+      - [ ] Test PATCH /:id/toggle toggles flag and refreshes cache
+      - [ ] Test PATCH /:id/percentage updates percentage and refreshes cache
+      - [ ] Test DELETE /:id deletes flag and refreshes cache
+      - [ ] Test all routes return appropriate status codes
+
+  - [ ] **Admin Actions**
+    - [ ] Create `src/features/feature-flags/admin/actions/list.ts`
+      - [ ] Fetch all feature flags from database
+      - [ ] Render FeatureFlagsPage with flags
+      - [ ] Handle errors gracefully
+    - [ ] Create `src/features/feature-flags/admin/actions/create.ts`
+      - [ ] Validate request body (key, active, percentage)
+      - [ ] Create feature flag in database
+      - [ ] Refresh cache
+      - [ ] Return success response or error
+    - [ ] Create `src/features/feature-flags/admin/actions/toggle.ts`
+      - [ ] Get flag ID from params
+      - [ ] Toggle flag using query utility
+      - [ ] Refresh cache
+      - [ ] Return updated flag or error
+    - [ ] Create `src/features/feature-flags/admin/actions/update-percentage.ts`
+      - [ ] Get flag ID from params
+      - [ ] Validate percentage (0-100)
+      - [ ] Update flag in database
+      - [ ] Refresh cache
+      - [ ] Return updated flag or error
+    - [ ] Create `src/features/feature-flags/admin/actions/delete.ts`
+      - [ ] Get flag ID from params
+      - [ ] Delete flag from database
+      - [ ] Refresh cache
+      - [ ] Return success response or error
+
+  - [ ] **Admin Views**
+    - [ ] Create `src/features/feature-flags/admin/views/FeatureFlagsPage.tsx`
+      - [ ] Use BaseLayout with title "Feature Flags"
+      - [ ] Add page header with title and description
+      - [ ] Add "Create New Flag" button that opens modal
+      - [ ] Include FeatureFlagTable component
+      - [ ] Include CreateFlagModal component
+      - [ ] Add Alpine.js data for modal state
+      - [ ] Style with Tailwind CSS
+
+  - [ ] **Admin Components**
+    - [ ] Create `src/features/feature-flags/admin/components/FeatureFlagTable.tsx`
+      - [ ] Accept flags array as prop
+      - [ ] Render table with headers: Key, Status, Percentage, Last Updated, Actions
+      - [ ] Map flags to FeatureFlagRow components
+      - [ ] Show empty state if no flags
+      - [ ] Style with Tailwind CSS
+    - [ ] Create `src/features/feature-flags/admin/components/FeatureFlagRow.tsx`
+      - [ ] Accept flag as prop
+      - [ ] Display flag key in first column
+      - [ ] Display toggle switch for active status with Alpine.js
+      - [ ] Display percentage slider with Alpine.js
+      - [ ] Display formatted last updated date
+      - [ ] Display delete button with confirmation
+      - [ ] Use Turbo for form submissions
+      - [ ] Add optimistic UI updates
+      - [ ] Style with Tailwind CSS
+    - [ ] Create `src/features/feature-flags/admin/components/CreateFlagModal.tsx`
+      - [ ] Accept isOpen and onClose props
+      - [ ] Render modal backdrop and container
+      - [ ] Add form with key input, active checkbox, percentage slider
+      - [ ] Use Turbo for form submission
+      - [ ] Validate inputs with Alpine.js
+      - [ ] Close modal on success
+      - [ ] Show validation errors
+      - [ ] Style with Tailwind CSS
+    - [ ] Create `src/features/feature-flags/admin/components/ToggleSwitch.tsx`
+      - [ ] Accept checked and onChange props
+      - [ ] Render accessible toggle switch
+      - [ ] Use Alpine.js for interactivity
+      - [ ] Style with Tailwind CSS
+    - [ ] Create `src/features/feature-flags/admin/components/PercentageSlider.tsx`
+      - [ ] Accept value and onChange props
+      - [ ] Render slider input (0-100)
+      - [ ] Display current percentage value
+      - [ ] Use Alpine.js for real-time updates
+      - [ ] Style with Tailwind CSS
+
+  - [ ] **Frontend Interactivity**
+    - [ ] Create `assets/js/lib/feature-flags-admin.ts`
+      - [ ] Create Alpine.js component for modal management
+      - [ ] Create Alpine.js component for toggle switch
+      - [ ] Create Alpine.js component for percentage slider
+      - [ ] Create Alpine.js component for delete confirmation
+      - [ ] Add Turbo form handlers for async submissions
+      - [ ] Add optimistic UI update helpers
+    - [ ] Update `assets/js/main.ts` if needed
+      - [ ] Register feature flag admin components
+
+  - [ ] **Register Admin Routes**
+    - [ ] Update `src/main.ts`
+      - [ ] Import feature flags admin router
+      - [ ] Mount router at `/admin/feature-flags`
+
+  - [ ] **Documentation**
+    - [ ] Verify CLAUDE.md has complete feature flag documentation
+    - [ ] Add inline code comments where needed
+    - [ ] Create example usage snippets
+
+  - [ ] **Integration Testing**
+    - [ ] Create `src/features/feature-flags/admin/integration.test.ts`
+      - [ ] Test complete flow: create -> toggle -> update percentage -> delete
+      - [ ] Test cache invalidation after each operation
+      - [ ] Test concurrent updates
+      - [ ] Test error scenarios
 
 ### Phase 3: Production Readiness
 
