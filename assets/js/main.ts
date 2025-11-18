@@ -27,8 +27,6 @@ declare global {
     Alpine: typeof Alpine
     Turbo: typeof Turbo
   }
-  var Alpine: typeof Alpine
-  var Turbo: typeof Turbo
 }
 
 export { Alpine, Turbo }
