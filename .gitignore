@@ -11,3 +11,7 @@ static/js/*.map
 
 # Deno
 deno.lock
+
+# Database
+data/
+drizzle/
