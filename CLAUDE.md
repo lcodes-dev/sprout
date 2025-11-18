@@ -222,30 +222,38 @@ Deno.serve(app.fetch)
    - `--allow-write` for file system writes
    - `--allow-env` for environment variables
 
-3. **Adding new features**:
+3. **CRITICAL - Pre-commit workflow**:
+   - **ALWAYS** run checks before committing code
+   - Format: `deno fmt` (fixes formatting automatically)
+   - Lint: `deno lint` (must pass with 0 errors)
+   - Type check: `deno check src/main.ts` (must pass with 0 errors)
+   - Test: `deno test --allow-all` (all tests must pass)
+   - These are the same checks that run in CI/CD
+   - **Never skip these steps** - they prevent CI/CD failures
+
+4. **Adding new features**:
    - Keep routes modular; consider separating into `routes/` directory
    - Add middleware to `middleware/` directory
    - Update `deno.json` tasks as needed
-   - Run `deno fmt` before committing
-   - Run `deno lint` to check for issues
+   - Follow the pre-commit workflow above before committing
 
-4. **Dependencies**:
+5. **Dependencies**:
    - Prefer JSR packages over npm when available
    - Always specify version constraints
    - Test after adding new dependencies
    - Document any required permissions
 
-5. **TypeScript**:
+6. **TypeScript**:
    - Leverage Deno's native TypeScript support
    - No need for `tsconfig.json` (use `deno.json` compilerOptions)
    - Type check with `deno check`
 
-6. **Error Handling**:
+7. **Error Handling**:
    - Use try-catch blocks for async operations
    - Return appropriate HTTP status codes
    - Log errors appropriately (Deno has `console` built-in)
 
-7. **Environment Variables**:
+8. **Environment Variables**:
    - Use `Deno.env.get()` to access environment variables
    - Consider using a `.env` file with `--allow-env --allow-read`
    - Add `.env` to `.gitignore` if using
@@ -475,12 +483,40 @@ See `src/db/README.md` for detailed documentation.
 
 - **Branch naming**: Use descriptive branch names (e.g., `feature/add-user-auth`, `fix/cors-issue`)
 - **Commits**: Write clear, concise commit messages
-- **Before committing**:
-  1. Run `deno fmt` to format code
-  2. Run `deno lint` to check for issues
-  3. Run `deno check main.ts` to verify types
-  4. Build assets with `deno task build`
-  5. Test the application with `deno task start`
+
+### CRITICAL: Pre-Commit Checklist
+
+**ALWAYS run these commands before committing. All must pass without errors:**
+
+```bash
+# 1. Format code (REQUIRED - fixes formatting automatically)
+deno fmt
+
+# 2. Lint code (REQUIRED - must pass with 0 errors)
+deno lint
+
+# 3. Type check (REQUIRED - must pass with 0 errors)
+deno check src/main.ts
+
+# 4. Run tests (REQUIRED - all tests must pass)
+deno test --allow-all
+
+# 5. Build assets (if applicable)
+deno task build
+```
+
+**Why this matters:**
+- The CI/CD pipeline runs these same checks
+- If any check fails, the CI/CD pipeline will fail
+- This wastes time and creates failed builds
+- Always ensure local checks pass before pushing
+
+**Quick pre-commit command:**
+```bash
+deno fmt && deno lint && deno check src/main.ts && deno test --allow-all
+```
+
+If this command completes successfully, you're ready to commit.
 
 ## Performance Considerations
 
