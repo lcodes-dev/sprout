@@ -1,8 +1,8 @@
-import type { FC } from "hono/jsx"
+import type { Child, FC } from "hono/jsx"
 
 interface BaseLayoutProps {
   title?: string
-  children: any
+  children: Child
 }
 
 export const BaseLayout: FC<BaseLayoutProps> = ({
