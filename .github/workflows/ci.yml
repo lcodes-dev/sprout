@@ -1,0 +1,78 @@
+# GitHub Actions CI/CD Pipeline for Sprout
+#
+# This workflow runs on:
+# - Push to main branch
+# - Pull requests targeting main branch
+# - Tag creation (v*.*.*)
+#
+# Steps:
+# 1. Checkout code
+# 2. Setup Deno with dependency caching
+# 3. Run linting checks
+# 4. Run formatting checks
+# 5. Run type checking
+# 6. Run tests
+
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-and-test:
+    name: Lint and Test
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Verify Deno installation
+        run: deno --version
+
+      - name: Cache Deno dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.deno
+            ~/.cache/deno
+          key: ${{ runner.os }}-deno-${{ hashFiles('**/deno.lock', '**/deno.json') }}
+          restore-keys: |
+            ${{ runner.os }}-deno-
+
+      - name: Run linting
+        run: deno lint
+
+      - name: Check formatting
+        run: deno fmt --check
+
+      - name: Type check
+        run: deno check src/main.ts
+
+      - name: Run tests
+        run: deno test --allow-all --coverage=coverage
+
+      - name: Generate coverage report
+        run: deno coverage coverage --lcov > coverage.lcov
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v3
+        continue-on-error: true
+        with:
+          files: ./coverage.lcov
+          fail_ci_if_error: false
