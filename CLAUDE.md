@@ -12,7 +12,8 @@
 - **Web Framework**: Hono v4.10.6+
 - **Language**: TypeScript (via Deno's native support)
 - **JSX Support**: Precompiled JSX with Hono's JSX runtime (SSR ONLY)
-- **Hotwire**: The project will integrate with [Hotwire Turbo](https://turbo.hotwired.dev/) and [Hotwire Stimulus](https://stimulus.hotwired.dev/)
+- **Hotwire**: The project integrates with [Hotwire Turbo](https://turbo.hotwired.dev/)
+- **Alpine.js**: Lightweight JavaScript framework for interactivity ([Alpine.js](https://alpinejs.dev/))
 - **CSS Framework**: Tailwind CSS (with build process)
 - **Frontend JS**: ES modules served as static assets
 
@@ -44,9 +45,8 @@ sprout/
 │   ├── css/                        # CSS source files
 │   │   └── main.css                # Main Tailwind CSS entry point
 │   └── js/                         # Frontend JavaScript source
-│       ├── controllers/            # Stimulus controllers
 │       ├── lib/                    # Shared frontend utilities
-│       └── main.ts                 # Frontend entry point
+│       └── main.ts                 # Frontend entry point (Alpine.js + Turbo)
 ├── static/                         # Built/static assets (served to frontend)
 │   ├── css/                        # Compiled CSS files
 │   ├── js/                         # Bundled/transpiled JS files
@@ -81,6 +81,21 @@ file for the feature in the frontend site
 ```
 
 ## Development Workflow
+
+### Initial Setup
+
+After cloning the repository, run these commands:
+
+```bash
+# 1. Install git hooks (HIGHLY RECOMMENDED)
+./scripts/install-git-hooks.sh
+
+# 2. Format all existing files
+deno fmt
+
+# 3. Verify everything is working
+deno lint && deno check src/main.ts && deno test --allow-all
+```
 
 ### Running the Application
 
@@ -222,30 +237,38 @@ Deno.serve(app.fetch)
    - `--allow-write` for file system writes
    - `--allow-env` for environment variables
 
-3. **Adding new features**:
+3. **CRITICAL - Pre-commit workflow**:
+   - **ALWAYS** run checks before committing code
+   - Format: `deno fmt` (fixes formatting automatically)
+   - Lint: `deno lint` (must pass with 0 errors)
+   - Type check: `deno check src/main.ts` (must pass with 0 errors)
+   - Test: `deno test --allow-all` (all tests must pass)
+   - These are the same checks that run in CI/CD
+   - **Never skip these steps** - they prevent CI/CD failures
+
+4. **Adding new features**:
    - Keep routes modular; consider separating into `routes/` directory
    - Add middleware to `middleware/` directory
    - Update `deno.json` tasks as needed
-   - Run `deno fmt` before committing
-   - Run `deno lint` to check for issues
+   - Follow the pre-commit workflow above before committing
 
-4. **Dependencies**:
+5. **Dependencies**:
    - Prefer JSR packages over npm when available
    - Always specify version constraints
    - Test after adding new dependencies
    - Document any required permissions
 
-5. **TypeScript**:
+6. **TypeScript**:
    - Leverage Deno's native TypeScript support
    - No need for `tsconfig.json` (use `deno.json` compilerOptions)
    - Type check with `deno check`
 
-6. **Error Handling**:
+7. **Error Handling**:
    - Use try-catch blocks for async operations
    - Return appropriate HTTP status codes
    - Log errors appropriately (Deno has `console` built-in)
 
-7. **Environment Variables**:
+8. **Environment Variables**:
    - Use `Deno.env.get()` to access environment variables
    - Consider using a `.env` file with `--allow-env --allow-read`
    - Add `.env` to `.gitignore` if using
@@ -314,12 +337,11 @@ The project uses Tailwind CSS for styling, which requires a build step to compil
 
 ### Frontend JavaScript
 
-Frontend JavaScript (Stimulus controllers, utilities) is organized separately from backend code.
+Frontend JavaScript (Alpine.js, utilities) is organized separately from backend code.
 
 **Structure**:
-- `assets/js/controllers/` - Stimulus controllers
-- `assets/js/lib/` - Shared frontend utilities
-- `assets/js/main.ts` - Entry point that imports and registers controllers
+- `assets/js/lib/` - Shared frontend utilities and Alpine.js components
+- `assets/js/main.ts` - Entry point that initializes Alpine.js and Turbo
 
 **Workflow**:
 1. Write TypeScript in `assets/js/`
@@ -327,18 +349,38 @@ Frontend JavaScript (Stimulus controllers, utilities) is organized separately fr
 3. Output is written to `static/js/main.js`
 4. Reference in HTML: `<script type="module" src="/static/js/main.js"></script>`
 
-**Stimulus Controllers**:
+**Alpine.js Usage**:
+Alpine.js provides reactive and declarative JavaScript right in your HTML. Use `x-data`, `x-on`, `x-bind`, and other directives directly in your templates.
+
+```html
+<!-- Example Alpine.js component in your JSX template -->
+<div x-data="{ count: 0 }">
+  <button x-on:click="count++">Increment</button>
+  <span x-text="count"></span>
+</div>
+```
+
+**Creating Reusable Alpine Components**:
 ```typescript
-// assets/js/controllers/hello_controller.ts
-import { Controller } from "@hotwired/stimulus"
-
-export default class extends Controller {
-  static targets = ["name"]
-
-  greet() {
-    console.log(`Hello, ${this.nameTarget.textContent}!`)
+// assets/js/lib/components/counter.ts
+export function counter(initialValue = 0) {
+  return {
+    count: initialValue,
+    increment() {
+      this.count++
+    },
+    decrement() {
+      this.count--
+    }
   }
 }
+
+// Use in HTML:
+// <div x-data="counter(5)">
+//   <button @click="decrement">-</button>
+//   <span x-text="count"></span>
+//   <button @click="increment">+</button>
+// </div>
 ```
 
 ### Static File Serving
@@ -456,12 +498,62 @@ See `src/db/README.md` for detailed documentation.
 
 - **Branch naming**: Use descriptive branch names (e.g., `feature/add-user-auth`, `fix/cors-issue`)
 - **Commits**: Write clear, concise commit messages
-- **Before committing**:
-  1. Run `deno fmt` to format code
-  2. Run `deno lint` to check for issues
-  3. Run `deno check main.ts` to verify types
-  4. Build assets with `deno task build`
-  5. Test the application with `deno task start`
+
+### Automated Git Hooks (RECOMMENDED)
+
+**Install git hooks to automatically run checks before each commit:**
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
+This will install a pre-commit hook that automatically runs:
+- `deno fmt` - Format code
+- `deno lint` - Lint code
+- `deno check` - Type check
+- `deno test` - Run tests
+
+If any check fails, the commit will be blocked. This **prevents CI/CD failures** and ensures code quality.
+
+**Benefits:**
+- ✅ Never forget to format/lint/test
+- ✅ Prevents broken commits from being pushed
+- ✅ Saves time by catching issues early
+- ✅ Ensures CI/CD pipeline always passes
+
+### CRITICAL: Pre-Commit Checklist
+
+**ALWAYS run these commands before committing. All must pass without errors:**
+
+```bash
+# 1. Format code (REQUIRED - fixes formatting automatically)
+deno fmt
+
+# 2. Lint code (REQUIRED - must pass with 0 errors)
+deno lint
+
+# 3. Type check (REQUIRED - must pass with 0 errors)
+deno check src/main.ts
+
+# 4. Run tests (REQUIRED - all tests must pass)
+deno test --allow-all
+
+# 5. Build assets (if applicable)
+deno task build
+```
+
+**Why this matters:**
+- The CI/CD pipeline runs these same checks
+- If any check fails, the CI/CD pipeline will fail
+- This wastes time and creates failed builds
+- Always ensure local checks pass before pushing
+
+**Quick pre-commit command:**
+```bash
+deno fmt && deno lint && deno check src/main.ts && deno test --allow-all
+```
+
+If this command completes successfully, you're ready to commit.
 
 ## Performance Considerations
 
@@ -528,16 +620,15 @@ See `src/db/README.md` for detailed documentation.
   - [ ] Add `.gitignore` entry for `static/css/` (built files)
 
 #### 2. Frontend JavaScript Structure
-- [ ] **Set up frontend JavaScript directories**
-  - [ ] Create `assets/js/` directory structure
-  - [ ] Create `assets/js/controllers/` for Stimulus controllers
-  - [ ] Create `assets/js/lib/` for utilities
-  - [ ] Create `assets/js/main.ts` as entry point
+- [x] **Set up frontend JavaScript directories** ✅
+  - [x] Create `assets/js/` directory structure
+  - [x] Create `assets/js/lib/` for utilities and Alpine components
+  - [x] Create `assets/js/main.ts` as entry point
 
-- [ ] **Install Hotwire Stimulus dependencies**
-  - [ ] Add `@hotwired/stimulus` via npm to `deno.json`
-  - [ ] Add `@hotwired/turbo` via npm to `deno.json`
-  - [ ] Verify imports work with Deno
+- [x] **Install Alpine.js and Hotwire dependencies** ✅
+  - [x] Add `alpinejs` via npm to `deno.json`
+  - [x] Add `@hotwired/turbo` via npm to `deno.json`
+  - [x] Verify imports work with Deno
 
 - [ ] **Create JavaScript build process**
   - [ ] Create `static/js/` output directory
@@ -550,12 +641,12 @@ See `src/db/README.md` for detailed documentation.
   - [ ] Add `watch:js` task for development
   - [ ] Test JavaScript bundling and output
 
-- [ ] **Create Stimulus application bootstrap**
-  - [ ] Write `assets/js/main.ts` to initialize Stimulus
-  - [ ] Set up controller auto-registration system
-  - [ ] Create example controller (`hello_controller.ts`)
-  - [ ] Document controller naming conventions
-  - [ ] Test Stimulus initialization in browser
+- [x] **Create Alpine.js application bootstrap** ✅
+  - [x] Write `assets/js/main.ts` to initialize Alpine.js
+  - [x] Initialize Hotwire Turbo integration
+  - [x] Make Alpine and Turbo available globally
+  - [x] Document Alpine.js usage patterns
+  - [x] Test Alpine.js initialization
 
 - [ ] **Configure static JavaScript serving**
   - [ ] Verify static middleware serves JS files
@@ -579,7 +670,7 @@ See `src/db/README.md` for detailed documentation.
 
 - [ ] **Update documentation**
   - [ ] Document build commands in README
-  - [ ] Add examples for creating new Stimulus controllers
+  - [ ] Add examples for creating Alpine.js components
   - [ ] Document Tailwind usage patterns
   - [ ] Create quick start guide for frontend development
 
@@ -612,6 +703,18 @@ See `src/db/README.md` for detailed documentation.
   - [ ] Create test utilities
   - [ ] Add example tests for routes
   - [ ] Add CI integration for tests
+
+- [x] **Set up GitHub Actions CI/CD pipeline** ✅
+  - [x] Create `.github/workflows/` directory structure
+  - [x] Create `ci.yml` workflow file
+  - [x] Configure triggers (push to master, pull requests, tags)
+  - [x] Add Deno setup action
+  - [x] Add linting step (`deno lint`)
+  - [x] Add formatting check step (`deno fmt --check`)
+  - [x] Add type checking step (`deno check`)
+  - [x] Add test step (`deno test`)
+  - [x] Configure Deno dependency caching for faster builds
+  - [x] Document CI/CD workflow in comments
 
 - [ ] **Configure CORS for API access**
   - [ ] Add CORS middleware
@@ -652,5 +755,5 @@ See `src/db/README.md` for detailed documentation.
 
 ---
 
-**Last Updated**: 2025-11-17
+**Last Updated**: 2025-11-18
 **Maintained by**: AI assistants should keep this document current as the project evolves

@@ -1,39 +1,32 @@
 /**
  * Frontend JavaScript Entry Point
  *
- * This file initializes Hotwire Turbo and Stimulus,
- * and registers all Stimulus controllers.
+ * This file initializes Hotwire Turbo and Alpine.js.
  */
 
-import { Application } from "@hotwired/stimulus"
+import Alpine from "alpinejs"
 import * as Turbo from "@hotwired/turbo"
 
-// Initialize Stimulus application
-const application = Application.start()
+// Make Alpine available globally before initialization
+globalThis.Alpine = Alpine
 
-// Configure Stimulus development experience
-application.debug = false
-window.Stimulus = application
-
-// Import and register controllers
-import HelloController from "./controllers/hello_controller.ts"
-
-application.register("hello", HelloController)
+// Start Alpine
+Alpine.start()
 
 // Log that the application has started
 console.log("🚀 Sprout frontend initialized!")
 console.log("📦 Turbo:", Turbo)
-console.log("⚡ Stimulus:", application)
+console.log("⚡ Alpine.js:", Alpine)
 
 // Make Turbo available globally for debugging
-window.Turbo = Turbo
+globalThis.Turbo = Turbo
 
-// Type augmentation for global window object
+// Type augmentation for global object
 declare global {
   interface Window {
-    Stimulus: Application
+    Alpine: typeof Alpine
     Turbo: typeof Turbo
   }
 }
 
-export { application, Turbo }
+export { Alpine, Turbo }
