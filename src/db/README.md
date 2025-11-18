@@ -21,7 +21,7 @@ deno task db:push
 ```
 
 This command will:
-- Read your schema definitions from `src/shared/db/schema/`
+- Read your schema definitions from `src/db/schema/`
 - Compare with the current database state
 - Apply necessary changes to sync the database
 
@@ -42,7 +42,7 @@ This opens a web interface (usually at `https://local.drizzle.studio`) where you
 ## Directory Structure
 
 ```
-src/shared/db/
+src/db/
 ├── schema/              # Database schema definitions
 │   ├── index.ts        # Exports all schemas
 │   └── users.ts        # User table schema
@@ -84,8 +84,8 @@ Consider using migrations (not this approach) for:
 ### Importing the Database Instance
 
 ```typescript
-import { db } from "./shared/db/connection.ts"
-import { users } from "./shared/db/schema/users.ts"
+import { db } from "./db/connection.ts"
+import { users } from "./db/schema/users.ts"
 ```
 
 ### Basic Queries
@@ -127,7 +127,7 @@ import {
   createUser,
   updateUser,
   deleteUser
-} from "./shared/db/queries/users.ts"
+} from "./db/queries/users.ts"
 
 // Much cleaner!
 const users = await getAllUsers()
@@ -137,10 +137,10 @@ const newUser = await createUser({ ... })
 
 ## Adding New Tables
 
-1. **Create schema file** in `src/shared/db/schema/`:
+1. **Create schema file** in `src/db/schema/`:
 
 ```typescript
-// src/shared/db/schema/posts.ts
+// src/db/schema/posts.ts
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 
@@ -159,7 +159,7 @@ export type NewPost = typeof posts.$inferInsert
 2. **Export from schema index**:
 
 ```typescript
-// src/shared/db/schema/index.ts
+// src/db/schema/index.ts
 export * from "./users.ts"
 export * from "./posts.ts"  // Add this line
 ```
@@ -170,13 +170,13 @@ export * from "./posts.ts"  // Add this line
 deno task db:push
 ```
 
-4. **Create query utilities** in `src/shared/db/queries/posts.ts`
+4. **Create query utilities** in `src/db/queries/posts.ts`
 
-5. **Write tests** in `src/shared/db/queries/posts.test.ts`
+5. **Write tests** in `src/db/queries/posts.test.ts`
 
 ## Configuration
 
-Database configuration is in `src/shared/db/config.ts`.
+Database configuration is in `src/db/config.ts`.
 
 ### Environment Variables
 
@@ -209,7 +209,7 @@ deno task test
 Or test a specific file:
 
 ```bash
-deno test src/shared/db/queries/users.test.ts
+deno test src/db/queries/users.test.ts
 ```
 
 ## Best Practices

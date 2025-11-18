@@ -372,10 +372,10 @@ deno task db:studio
 
 ### Database Configuration
 
-- **Config**: `src/shared/db/config.ts`
-- **Connection**: `src/shared/db/connection.ts`
-- **Schemas**: `src/shared/db/schema/`
-- **Queries**: `src/shared/db/queries/`
+- **Config**: `src/db/config.ts`
+- **Connection**: `src/db/connection.ts`
+- **Schemas**: `src/db/schema/`
+- **Queries**: `src/db/queries/`
 
 **Environment Variables**:
 - `DATABASE_URL`: Database connection URL (default: `file:./data/sprout.db`)
@@ -386,8 +386,8 @@ deno task db:studio
 
 **Import the database instance**:
 ```typescript
-import { db } from "./shared/db/connection.ts"
-import { users } from "./shared/db/schema/users.ts"
+import { db } from "./db/connection.ts"
+import { users } from "./db/schema/users.ts"
 ```
 
 **Basic queries**:
@@ -396,7 +396,7 @@ import { users } from "./shared/db/schema/users.ts"
 const allUsers = await db.select().from(users)
 
 // Using query utilities (recommended)
-import { getAllUsers, createUser } from "./shared/db/queries/users.ts"
+import { getAllUsers, createUser } from "./db/queries/users.ts"
 const users = await getAllUsers()
 const newUser = await createUser({
   email: "user@example.com",
@@ -407,15 +407,15 @@ const newUser = await createUser({
 
 ### Adding New Tables
 
-1. Create schema file in `src/shared/db/schema/[table-name].ts`
-2. Export from `src/shared/db/schema/index.ts`
+1. Create schema file in `src/db/schema/[table-name].ts`
+2. Export from `src/db/schema/index.ts`
 3. Run `deno task db:push` to sync schema
-4. Create query utilities in `src/shared/db/queries/[table-name].ts`
-5. Write tests in `src/shared/db/queries/[table-name].test.ts`
+4. Create query utilities in `src/db/queries/[table-name].ts`
+5. Write tests in `src/db/queries/[table-name].test.ts`
 
 **Example schema**:
 ```typescript
-// src/shared/db/schema/posts.ts
+// src/db/schema/posts.ts
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
 import { sql } from "drizzle-orm"
 import { users } from "./users.ts"
@@ -450,7 +450,7 @@ The code-first approach means:
 
 **When to use migrations**: Large production systems, strict schema controls, rollback requirements
 
-See `src/shared/db/README.md` for detailed documentation.
+See `src/db/README.md` for detailed documentation.
 
 ## Git Workflow
 
