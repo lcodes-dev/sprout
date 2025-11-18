@@ -82,6 +82,21 @@ file for the feature in the frontend site
 
 ## Development Workflow
 
+### Initial Setup
+
+After cloning the repository, run these commands:
+
+```bash
+# 1. Install git hooks (HIGHLY RECOMMENDED)
+./scripts/install-git-hooks.sh
+
+# 2. Format all existing files
+deno fmt
+
+# 3. Verify everything is working
+deno lint && deno check src/main.ts && deno test --allow-all
+```
+
 ### Running the Application
 
 ```bash
@@ -483,6 +498,28 @@ See `src/db/README.md` for detailed documentation.
 
 - **Branch naming**: Use descriptive branch names (e.g., `feature/add-user-auth`, `fix/cors-issue`)
 - **Commits**: Write clear, concise commit messages
+
+### Automated Git Hooks (RECOMMENDED)
+
+**Install git hooks to automatically run checks before each commit:**
+
+```bash
+./scripts/install-git-hooks.sh
+```
+
+This will install a pre-commit hook that automatically runs:
+- `deno fmt` - Format code
+- `deno lint` - Lint code
+- `deno check` - Type check
+- `deno test` - Run tests
+
+If any check fails, the commit will be blocked. This **prevents CI/CD failures** and ensures code quality.
+
+**Benefits:**
+- ✅ Never forget to format/lint/test
+- ✅ Prevents broken commits from being pushed
+- ✅ Saves time by catching issues early
+- ✅ Ensures CI/CD pipeline always passes
 
 ### CRITICAL: Pre-Commit Checklist
 
