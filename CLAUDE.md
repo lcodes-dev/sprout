@@ -12,7 +12,8 @@
 - **Web Framework**: Hono v4.10.6+
 - **Language**: TypeScript (via Deno's native support)
 - **JSX Support**: Precompiled JSX with Hono's JSX runtime (SSR ONLY)
-- **Hotwire**: The project will integrate with [Hotwire Turbo](https://turbo.hotwired.dev/) and [Hotwire Stimulus](https://stimulus.hotwired.dev/)
+- **Hotwire**: The project integrates with [Hotwire Turbo](https://turbo.hotwired.dev/)
+- **Alpine.js**: Lightweight JavaScript framework for interactivity ([Alpine.js](https://alpinejs.dev/))
 - **CSS Framework**: Tailwind CSS (with build process)
 - **Frontend JS**: ES modules served as static assets
 
@@ -44,9 +45,8 @@ sprout/
 │   ├── css/                        # CSS source files
 │   │   └── main.css                # Main Tailwind CSS entry point
 │   └── js/                         # Frontend JavaScript source
-│       ├── controllers/            # Stimulus controllers
 │       ├── lib/                    # Shared frontend utilities
-│       └── main.ts                 # Frontend entry point
+│       └── main.ts                 # Frontend entry point (Alpine.js + Turbo)
 ├── static/                         # Built/static assets (served to frontend)
 │   ├── css/                        # Compiled CSS files
 │   ├── js/                         # Bundled/transpiled JS files
@@ -314,12 +314,11 @@ The project uses Tailwind CSS for styling, which requires a build step to compil
 
 ### Frontend JavaScript
 
-Frontend JavaScript (Stimulus controllers, utilities) is organized separately from backend code.
+Frontend JavaScript (Alpine.js, utilities) is organized separately from backend code.
 
 **Structure**:
-- `assets/js/controllers/` - Stimulus controllers
-- `assets/js/lib/` - Shared frontend utilities
-- `assets/js/main.ts` - Entry point that imports and registers controllers
+- `assets/js/lib/` - Shared frontend utilities and Alpine.js components
+- `assets/js/main.ts` - Entry point that initializes Alpine.js and Turbo
 
 **Workflow**:
 1. Write TypeScript in `assets/js/`
@@ -327,18 +326,38 @@ Frontend JavaScript (Stimulus controllers, utilities) is organized separately fr
 3. Output is written to `static/js/main.js`
 4. Reference in HTML: `<script type="module" src="/static/js/main.js"></script>`
 
-**Stimulus Controllers**:
+**Alpine.js Usage**:
+Alpine.js provides reactive and declarative JavaScript right in your HTML. Use `x-data`, `x-on`, `x-bind`, and other directives directly in your templates.
+
+```html
+<!-- Example Alpine.js component in your JSX template -->
+<div x-data="{ count: 0 }">
+  <button x-on:click="count++">Increment</button>
+  <span x-text="count"></span>
+</div>
+```
+
+**Creating Reusable Alpine Components**:
 ```typescript
-// assets/js/controllers/hello_controller.ts
-import { Controller } from "@hotwired/stimulus"
-
-export default class extends Controller {
-  static targets = ["name"]
-
-  greet() {
-    console.log(`Hello, ${this.nameTarget.textContent}!`)
+// assets/js/lib/components/counter.ts
+export function counter(initialValue = 0) {
+  return {
+    count: initialValue,
+    increment() {
+      this.count++
+    },
+    decrement() {
+      this.count--
+    }
   }
 }
+
+// Use in HTML:
+// <div x-data="counter(5)">
+//   <button @click="decrement">-</button>
+//   <span x-text="count"></span>
+//   <button @click="increment">+</button>
+// </div>
 ```
 
 ### Static File Serving
@@ -528,16 +547,15 @@ See `src/db/README.md` for detailed documentation.
   - [ ] Add `.gitignore` entry for `static/css/` (built files)
 
 #### 2. Frontend JavaScript Structure
-- [ ] **Set up frontend JavaScript directories**
-  - [ ] Create `assets/js/` directory structure
-  - [ ] Create `assets/js/controllers/` for Stimulus controllers
-  - [ ] Create `assets/js/lib/` for utilities
-  - [ ] Create `assets/js/main.ts` as entry point
+- [x] **Set up frontend JavaScript directories** ✅
+  - [x] Create `assets/js/` directory structure
+  - [x] Create `assets/js/lib/` for utilities and Alpine components
+  - [x] Create `assets/js/main.ts` as entry point
 
-- [ ] **Install Hotwire Stimulus dependencies**
-  - [ ] Add `@hotwired/stimulus` via npm to `deno.json`
-  - [ ] Add `@hotwired/turbo` via npm to `deno.json`
-  - [ ] Verify imports work with Deno
+- [x] **Install Alpine.js and Hotwire dependencies** ✅
+  - [x] Add `alpinejs` via npm to `deno.json`
+  - [x] Add `@hotwired/turbo` via npm to `deno.json`
+  - [x] Verify imports work with Deno
 
 - [ ] **Create JavaScript build process**
   - [ ] Create `static/js/` output directory
@@ -550,12 +568,12 @@ See `src/db/README.md` for detailed documentation.
   - [ ] Add `watch:js` task for development
   - [ ] Test JavaScript bundling and output
 
-- [ ] **Create Stimulus application bootstrap**
-  - [ ] Write `assets/js/main.ts` to initialize Stimulus
-  - [ ] Set up controller auto-registration system
-  - [ ] Create example controller (`hello_controller.ts`)
-  - [ ] Document controller naming conventions
-  - [ ] Test Stimulus initialization in browser
+- [x] **Create Alpine.js application bootstrap** ✅
+  - [x] Write `assets/js/main.ts` to initialize Alpine.js
+  - [x] Initialize Hotwire Turbo integration
+  - [x] Make Alpine and Turbo available globally
+  - [x] Document Alpine.js usage patterns
+  - [x] Test Alpine.js initialization
 
 - [ ] **Configure static JavaScript serving**
   - [ ] Verify static middleware serves JS files
@@ -579,7 +597,7 @@ See `src/db/README.md` for detailed documentation.
 
 - [ ] **Update documentation**
   - [ ] Document build commands in README
-  - [ ] Add examples for creating new Stimulus controllers
+  - [ ] Add examples for creating Alpine.js components
   - [ ] Document Tailwind usage patterns
   - [ ] Create quick start guide for frontend development
 
