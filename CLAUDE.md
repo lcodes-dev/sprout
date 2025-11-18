@@ -562,6 +562,345 @@ If this command completes successfully, you're ready to commit.
 - [Drizzle ORM Docs](https://orm.drizzle.team/)
 - [Tailwind CSS v4 Docs](https://tailwindcss.com/docs)
 
+## Email Notification System
+
+The email notification system is a comprehensive feature that enables administrators to manage email communications with users. It supports email templates, scheduled sends, delivery tracking, and analytics.
+
+### Architecture Overview
+
+The email notification system is built as a feature under `src/features/email-notifications/` with an admin-focused interface. It follows the project's feature-based architecture and integrates with multiple email providers.
+
+**Core Components**:
+1. **Database Layer**: Three main tables (templates, scheduled emails, sent emails)
+2. **Provider Layer**: Abstraction supporting SMTP, Resend, and AWS SES
+3. **Business Logic**: Email scheduling, sending, and consent management
+4. **Admin Interface**: Views and components for managing emails
+5. **Analytics**: Dashboard showing email performance metrics
+
+### Database Schema
+
+#### Email Templates Table
+Stores reusable email templates that can be used for scheduled sends.
+
+```typescript
+emailTemplates {
+  id: serial (primary key)
+  name: text (unique, required)
+  subject: text (required)
+  bodyHtml: text (required)
+  bodyText: text (optional)
+  category: text (enum: 'notification', 'marketing')
+  createdAt: timestamp
+  updatedAt: timestamp
+}
+```
+
+#### Scheduled Emails Table
+Tracks emails that are scheduled to be sent.
+
+```typescript
+scheduledEmails {
+  id: serial (primary key)
+  templateId: integer (nullable, references emailTemplates.id)
+  subject: text (required)
+  bodyHtml: text (required)
+  bodyText: text (optional)
+  recipientEmail: text (required)
+  recipientName: text (optional)
+  emailType: text (enum: 'notification', 'marketing')
+  scheduledFor: timestamp (required)
+  status: text (enum: 'pending', 'sent', 'failed', 'cancelled')
+  sentAt: timestamp (nullable)
+  failureReason: text (nullable)
+  createdAt: timestamp
+  updatedAt: timestamp
+}
+```
+
+#### Sent Emails Table
+Historical record of all sent emails for tracking and analytics.
+
+```typescript
+sentEmails {
+  id: serial (primary key)
+  scheduledEmailId: integer (nullable, references scheduledEmails.id)
+  templateId: integer (nullable, references emailTemplates.id)
+  subject: text (required)
+  bodyHtml: text (required)
+  bodyText: text (optional)
+  recipientEmail: text (required)
+  recipientName: text (optional)
+  emailType: text (enum: 'notification', 'marketing')
+  sentAt: timestamp (required)
+  deliveryStatus: text (enum: 'sent', 'delivered', 'bounced', 'failed')
+  openedAt: timestamp (nullable)
+  clickedAt: timestamp (nullable)
+  providerMessageId: text (nullable)
+  metadata: jsonb (nullable)
+  createdAt: timestamp
+}
+```
+
+#### Marketing Consent Field
+The `users` table must include a marketing consent field:
+
+```typescript
+users {
+  // ... existing fields
+  marketingConsent: boolean (default: false)
+  marketingConsentDate: timestamp (nullable)
+}
+```
+
+### Email Provider Abstraction
+
+The system supports multiple email providers through a unified interface:
+
+**Environment Variables**:
+- `EMAIL_PROVIDER`: 'smtp' | 'resend' | 'ses' (required)
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` (for SMTP)
+- `RESEND_API_KEY` (for Resend)
+- `AWS_SES_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` (for SES)
+- `EMAIL_FROM_ADDRESS`: Default sender email
+- `EMAIL_FROM_NAME`: Default sender name
+
+**Provider Interface**:
+```typescript
+interface EmailProvider {
+  send(email: EmailMessage): Promise<EmailSendResult>
+  verifyConnection(): Promise<boolean>
+}
+
+interface EmailMessage {
+  to: { email: string; name?: string }
+  from: { email: string; name: string }
+  subject: string
+  html: string
+  text?: string
+  replyTo?: string
+}
+
+interface EmailSendResult {
+  success: boolean
+  messageId?: string
+  error?: string
+}
+```
+
+### Marketing Consent Management
+
+Marketing emails MUST check user consent before sending:
+1. Query user's `marketingConsent` field
+2. If `emailType === 'marketing'` and `marketingConsent === false`, skip/cancel send
+3. Log consent failures for audit trail
+4. Notification emails can be sent regardless of marketing consent
+
+### Admin Panel Interface
+
+#### Routes
+- `GET /admin/emails` - Email dashboard with analytics
+- `GET /admin/emails/templates` - List all templates
+- `GET /admin/emails/templates/new` - Create new template form
+- `POST /admin/emails/templates` - Create template
+- `GET /admin/emails/templates/:id/edit` - Edit template form
+- `PUT /admin/emails/templates/:id` - Update template
+- `DELETE /admin/emails/templates/:id` - Delete template
+- `GET /admin/emails/scheduled` - List scheduled emails
+- `GET /admin/emails/scheduled/new` - Schedule new email form
+- `POST /admin/emails/scheduled` - Schedule email
+- `DELETE /admin/emails/scheduled/:id` - Cancel scheduled email
+- `GET /admin/emails/sent` - List sent emails with filters
+- `GET /admin/emails/analytics` - Email analytics API endpoint
+
+#### Views & Components
+
+**Dashboard View** (`dashboard.tsx`):
+- Overview stats (total sent, delivery rate, open rate, click rate)
+- Recent email activity
+- Charts showing email performance over time
+- Quick actions (schedule email, create template)
+
+**Template List View** (`template-list.tsx`):
+- Searchable/filterable table of templates
+- Categories (notification/marketing)
+- Actions (edit, delete, use for scheduling)
+
+**Template Form View** (`template-form.tsx`):
+- Rich text editor for HTML body
+- Plain text fallback
+- Subject line with variables
+- Category selection
+- Preview functionality
+
+**Schedule Email View** (`schedule-email-form.tsx`):
+- Option to select template or start from scratch
+- Recipient selection/input
+- Schedule date/time picker
+- Email type selection (notification/marketing)
+- Preview before scheduling
+
+**Scheduled Emails List View** (`scheduled-list.tsx`):
+- List of pending scheduled emails
+- Filters by status, type, date range
+- Actions (cancel, reschedule)
+- Status indicators
+
+**Sent Emails List View** (`sent-list.tsx`):
+- Historical sent emails
+- Delivery status indicators
+- Search by recipient
+- Date range filters
+- Export functionality
+
+#### Interactive Components (Alpine.js)
+
+**Email Preview Component**:
+```typescript
+// Alpine.js component for live email preview
+{
+  subject: '',
+  body: '',
+  previewMode: 'desktop', // desktop | mobile
+  showPreview: false,
+  togglePreview() { ... },
+  updatePreview() { ... }
+}
+```
+
+**Template Selector Component**:
+```typescript
+// Alpine.js component for selecting and loading templates
+{
+  templates: [],
+  selectedTemplate: null,
+  searchQuery: '',
+  loadTemplate(id) { ... },
+  clearTemplate() { ... }
+}
+```
+
+**Date/Time Picker Component**:
+```typescript
+// Alpine.js component for scheduling
+{
+  scheduledDate: '',
+  scheduledTime: '',
+  timezone: 'UTC',
+  validateDateTime() { ... }
+}
+```
+
+### Analytics Functions
+
+The analytics system tracks email performance:
+
+**Metrics Tracked**:
+- Total emails sent (by type, by date range)
+- Delivery rate (sent vs bounced/failed)
+- Open rate (emails opened / emails delivered)
+- Click rate (emails clicked / emails opened)
+- Conversion by template
+- Performance by email type
+
+**Analytics Queries**:
+```typescript
+// Get email stats for dashboard
+getEmailStats(startDate?, endDate?): Promise<EmailStats>
+
+// Get performance by template
+getTemplatePerformance(templateId): Promise<TemplateStats>
+
+// Get email volume over time (for charts)
+getEmailVolumeOverTime(days: number): Promise<VolumeData[]>
+
+// Get engagement metrics
+getEngagementMetrics(startDate?, endDate?): Promise<EngagementStats>
+```
+
+**EmailStats Interface**:
+```typescript
+interface EmailStats {
+  totalSent: number
+  totalDelivered: number
+  totalBounced: number
+  totalFailed: number
+  totalOpened: number
+  totalClicked: number
+  deliveryRate: number // percentage
+  openRate: number // percentage
+  clickRate: number // percentage
+  byType: {
+    notification: { sent: number; delivered: number }
+    marketing: { sent: number; delivered: number }
+  }
+}
+```
+
+### Email Scheduling and Background Processing
+
+**Email Sending Logic**:
+1. Background job checks for scheduled emails where `scheduledFor <= NOW()` and `status = 'pending'`
+2. For marketing emails, verify recipient has `marketingConsent = true`
+3. Send email via configured provider
+4. Update `scheduledEmails.status` to 'sent' or 'failed'
+5. Create record in `sentEmails` table
+6. Log any errors with `failureReason`
+
+**Implementation Options**:
+- Simple interval-based check (for MVP)
+- Cron job integration
+- Queue-based system (future enhancement)
+
+### Frontend Dependencies
+
+For charts and analytics visualization, consider adding:
+- **Chart.js**: Lightweight charting library
+- **ApexCharts**: Modern, responsive charts (recommended)
+
+```bash
+npm install apexcharts
+```
+
+Usage with Alpine.js:
+```typescript
+// Alpine.js component with ApexCharts
+{
+  chart: null,
+  initChart() {
+    this.chart = new ApexCharts(this.$refs.chartContainer, options)
+    this.chart.render()
+  }
+}
+```
+
+### Security Considerations
+
+1. **Email Content Validation**: Sanitize HTML to prevent XSS
+2. **Rate Limiting**: Prevent email spam/abuse
+3. **Permission Checks**: Only admins can access email management
+4. **Consent Enforcement**: Strict marketing consent checking
+5. **API Key Security**: Never expose provider keys in frontend
+6. **Audit Trail**: Log all email operations with user attribution
+
+### Testing Strategy
+
+**Unit Tests**:
+- Database query utilities (`src/db/queries/email-*.test.ts`)
+- Email provider implementations (`src/features/email-notifications/providers/*.test.ts`)
+- Consent checking logic
+- Analytics calculations
+
+**Integration Tests**:
+- Email scheduling flow
+- Template usage in scheduled emails
+- Provider switching based on env config
+- Marketing consent enforcement
+
+**Component Tests**:
+- Template form validation
+- Schedule form validation
+- Analytics data fetching
+
 ## Project Status & Roadmap
 
 **Current Version**: Initial setup (v0.1.0)
@@ -735,6 +1074,170 @@ If this command completes successfully, you're ready to commit.
   - [ ] Add deployment documentation
   - [ ] Configure production environment
   - [ ] Add deployment scripts
+
+### Phase 4: Email Notification System
+
+- [ ] **Database schema implementation**
+  - [ ] Add marketing consent fields to users table
+  - [ ] Create email_templates table with schema
+  - [ ] Create scheduled_emails table with schema
+  - [ ] Create sent_emails table with schema
+  - [ ] Export all schemas from index.ts
+  - [ ] Run `npm run db:push` to sync database
+  - [ ] Write tests for schema validation
+
+- [ ] **Database query utilities**
+  - [ ] Create email-templates.ts query utilities
+    - [ ] getAllTemplates, getTemplateById, getTemplatesByCategory
+    - [ ] createTemplate, updateTemplate, deleteTemplate
+    - [ ] Write tests for template queries
+  - [ ] Create scheduled-emails.ts query utilities
+    - [ ] getAllScheduled, getScheduledById, getPendingScheduled
+    - [ ] createScheduledEmail, updateScheduledEmail, cancelScheduledEmail
+    - [ ] Write tests for scheduled email queries
+  - [ ] Create sent-emails.ts query utilities
+    - [ ] getAllSent, getSentById, getSentByRecipient
+    - [ ] createSentRecord, updateDeliveryStatus
+    - [ ] Write tests for sent email queries
+  - [ ] Create email-analytics.ts query utilities
+    - [ ] getEmailStats, getTemplatePerformance
+    - [ ] getEmailVolumeOverTime, getEngagementMetrics
+    - [ ] Write tests for analytics queries
+
+- [ ] **Email provider abstraction**
+  - [ ] Create provider interface types
+  - [ ] Implement SMTP provider
+    - [ ] Use nodemailer for SMTP
+    - [ ] Configuration from environment variables
+    - [ ] Connection verification
+    - [ ] Write tests for SMTP provider
+  - [ ] Implement Resend provider
+    - [ ] Install resend SDK
+    - [ ] Configuration from environment variables
+    - [ ] Connection verification
+    - [ ] Write tests for Resend provider
+  - [ ] Implement AWS SES provider
+    - [ ] Install AWS SDK
+    - [ ] Configuration from environment variables
+    - [ ] Connection verification
+    - [ ] Write tests for SES provider
+  - [ ] Create provider factory
+    - [ ] Select provider based on EMAIL_PROVIDER env var
+    - [ ] Validate configuration on startup
+    - [ ] Write tests for provider factory
+
+- [ ] **Email business logic**
+  - [ ] Create email service layer
+    - [ ] Marketing consent checking function
+    - [ ] Email validation utilities
+    - [ ] HTML sanitization for safety
+    - [ ] Write tests for business logic
+  - [ ] Implement email scheduler
+    - [ ] Background job/interval to check pending emails
+    - [ ] Process scheduled emails when due
+    - [ ] Update status and create sent records
+    - [ ] Error handling and retry logic
+    - [ ] Write tests for scheduler
+  - [ ] Implement email sender
+    - [ ] Send via selected provider
+    - [ ] Track delivery status
+    - [ ] Handle provider errors
+    - [ ] Write tests for sender
+
+- [ ] **Admin panel routes**
+  - [ ] Create admin/emails/index.tsx router
+  - [ ] Implement dashboard route (GET /admin/emails)
+  - [ ] Implement template routes
+    - [ ] GET /admin/emails/templates (list)
+    - [ ] GET /admin/emails/templates/new (form)
+    - [ ] POST /admin/emails/templates (create)
+    - [ ] GET /admin/emails/templates/:id/edit (form)
+    - [ ] PUT /admin/emails/templates/:id (update)
+    - [ ] DELETE /admin/emails/templates/:id (delete)
+  - [ ] Implement scheduled email routes
+    - [ ] GET /admin/emails/scheduled (list)
+    - [ ] GET /admin/emails/scheduled/new (form)
+    - [ ] POST /admin/emails/scheduled (create)
+    - [ ] DELETE /admin/emails/scheduled/:id (cancel)
+  - [ ] Implement sent email routes
+    - [ ] GET /admin/emails/sent (list with filters)
+  - [ ] Implement analytics API route
+    - [ ] GET /admin/emails/analytics (JSON endpoint)
+  - [ ] Write tests for all routes
+
+- [ ] **Admin panel views and components**
+  - [ ] Create shared components
+    - [ ] EmailStatsCard component (stats display)
+    - [ ] EmailTable component (reusable table)
+    - [ ] EmailStatusBadge component (status indicator)
+    - [ ] Write tests for shared components
+  - [ ] Create dashboard view
+    - [ ] Overview stats display
+    - [ ] Recent email activity list
+    - [ ] Performance charts (using ApexCharts)
+    - [ ] Quick action buttons
+    - [ ] Write tests for dashboard
+  - [ ] Create template views
+    - [ ] TemplateList view with search/filters
+    - [ ] TemplateForm view (create/edit)
+    - [ ] Template preview component
+    - [ ] Rich text editor integration
+    - [ ] Write tests for template views
+  - [ ] Create scheduled email views
+    - [ ] ScheduledList view with filters
+    - [ ] ScheduleEmailForm view
+    - [ ] Template selector with Alpine.js
+    - [ ] Date/time picker with Alpine.js
+    - [ ] Write tests for scheduled views
+  - [ ] Create sent email views
+    - [ ] SentList view with filters and search
+    - [ ] Delivery status display
+    - [ ] Export functionality
+    - [ ] Write tests for sent views
+
+- [ ] **Frontend Alpine.js components**
+  - [ ] Create email preview component
+    - [ ] Live preview toggle
+    - [ ] Desktop/mobile view switcher
+    - [ ] Add to assets/js/lib/components/
+  - [ ] Create template selector component
+    - [ ] Search/filter templates
+    - [ ] Load template data
+    - [ ] Add to assets/js/lib/components/
+  - [ ] Create date/time picker component
+    - [ ] Date selection
+    - [ ] Time selection
+    - [ ] Timezone handling
+    - [ ] Add to assets/js/lib/components/
+  - [ ] Create analytics chart component
+    - [ ] Initialize ApexCharts
+    - [ ] Fetch data from API
+    - [ ] Update on data changes
+    - [ ] Add to assets/js/lib/components/
+
+- [ ] **Dependencies and configuration**
+  - [ ] Install email provider dependencies
+    - [ ] npm install nodemailer @types/nodemailer
+    - [ ] npm install resend
+    - [ ] npm install @aws-sdk/client-ses
+  - [ ] Install chart library
+    - [ ] npm install apexcharts
+  - [ ] Update .env.example with email configuration
+  - [ ] Document all environment variables
+
+- [ ] **Integration and testing**
+  - [ ] Integration tests for complete email flow
+  - [ ] Test marketing consent enforcement
+  - [ ] Test provider switching
+  - [ ] Test error handling and edge cases
+  - [ ] Manual testing of all admin views
+  - [ ] Performance testing with large email volumes
+
+- [ ] **Documentation**
+  - [ ] Update README with email system overview
+  - [ ] Document email provider setup
+  - [ ] Add troubleshooting guide
+  - [ ] Document analytics metrics
 
 ---
 

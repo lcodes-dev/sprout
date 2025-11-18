@@ -70,6 +70,18 @@ export const users = pgTable("users", {
 		.notNull()
 		.default(sql`CURRENT_TIMESTAMP`)
 		.$onUpdate(() => sql`CURRENT_TIMESTAMP`),
+
+	/**
+	 * Whether the user has consented to receive marketing emails
+	 * Defaults to false for GDPR compliance
+	 */
+	marketingConsent: boolean("marketing_consent").notNull().default(false),
+
+	/**
+	 * Timestamp of when the user gave marketing consent
+	 * NULL if they haven't consented
+	 */
+	marketingConsentDate: timestamp("marketing_consent_date"),
 });
 
 /**
