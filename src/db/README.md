@@ -1,23 +1,25 @@
 # Database Setup Guide
 
-This directory contains the database configuration, schema definitions, and query utilities for Sprout using Drizzle ORM with a code-first approach.
+This directory contains the database configuration, schema definitions, and query utilities for Sprout using Drizzle ORM with PostgreSQL 18 and a code-first approach.
 
 ## Quick Start
 
-### 1. Initialize the Database
+### 1. Start the Database
 
-Create the database directory and file:
+The database is managed via Docker Compose. Start it with:
 
 ```bash
-deno task db:init
+docker compose up -d
 ```
+
+Or simply run `npm run dev` which will start the database automatically.
 
 ### 2. Sync Schema to Database
 
 Push your schema changes to the database (code-first, no migrations):
 
 ```bash
-deno task db:push
+npm run db:push
 ```
 
 This command will:
@@ -30,7 +32,7 @@ This command will:
 Launch Drizzle Studio to visually explore and manage your database:
 
 ```bash
-deno task db:studio
+npm run db:studio
 ```
 
 This opens a web interface (usually at `https://local.drizzle.studio`) where you can:
@@ -141,15 +143,15 @@ const newUser = await createUser({ ... })
 
 ```typescript
 // src/db/schema/posts.ts
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core"
+import { pgTable, serial, text, timestamp, integer } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
-export const posts = sqliteTable("posts", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
+export const posts = pgTable("posts", {
+  id: serial("id").primaryKey(),
   title: text("title").notNull(),
   content: text("content").notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
-  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 })
 
 export type Post = typeof posts.$inferSelect
@@ -167,7 +169,7 @@ export * from "./posts.ts"  // Add this line
 3. **Push to database**:
 
 ```bash
-deno task db:push
+npm run db:push
 ```
 
 4. **Create query utilities** in `src/db/queries/posts.ts`
@@ -180,37 +182,56 @@ Database configuration is in `src/db/config.ts`.
 
 ### Environment Variables
 
-- `DATABASE_URL`: Database connection URL (default: `file:./data/sprout.db`)
-- `DATABASE_AUTH_TOKEN`: Auth token for remote databases (optional)
-- `DENO_ENV`: Set to `development` for verbose logging
+- `DATABASE_URL`: PostgreSQL connection URL (default: `postgresql://postgres:postgres@localhost:5432/sprout`)
+- `NODE_ENV`: Set to `development` for verbose logging
 
 ### Example .env file
 
 ```bash
-# Local SQLite (default)
-DATABASE_URL=file:./data/sprout.db
+# Local PostgreSQL (default)
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sprout
 
-# Or use Turso/libSQL for production
-# DATABASE_URL=libsql://your-database.turso.io
-# DATABASE_AUTH_TOKEN=your_auth_token_here
+# Or use a remote PostgreSQL instance
+# DATABASE_URL=postgresql://user:password@host:port/database
 
 # Enable verbose logging
-DENO_ENV=development
+NODE_ENV=development
 ```
 
 ## Testing
 
-Run database tests:
+Tests use a separate `sprout-test` database to isolate test data from development data. Database setup and teardown is handled automatically by test helpers.
+
+### How Test Database Management Works
+
+The test helpers (`src/db/test-helpers.ts`) provide functions to:
+- **`setupTestDatabase()`**: Creates the test database if needed and cleans all tables before tests run
+- **`teardownTestDatabase()`**: Cleans all tables after tests complete
+- **`dropTestDatabase()`**: Drops the entire test database (useful for CI cleanup)
+
+Test files automatically call `setupTestDatabase()` in `beforeAll()` and `teardownTestDatabase()` in `afterAll()` hooks.
+
+### Running Tests
 
 ```bash
-deno task test
+npm test
 ```
 
 Or test a specific file:
 
 ```bash
-deno test src/db/queries/users.test.ts
+npm test -- src/db/queries/users.test.ts
 ```
+
+### First-Time Setup
+
+Before running tests for the first time, sync the schema to the test database:
+
+```bash
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sprout-test npm run db:push
+```
+
+After this initial setup, the test helpers will automatically manage the database state for each test run.
 
 ## Best Practices
 
@@ -225,13 +246,14 @@ deno test src/db/queries/users.test.ts
 
 ### Schema changes not applied
 
-Make sure to run `deno task db:push` after changing schemas.
+Make sure to run `npm run db:push` after changing schemas.
 
 ### Connection errors
 
 1. Check `DATABASE_URL` is set correctly
-2. Ensure database directory exists (`deno task db:init`)
-3. Verify file permissions if using local SQLite
+2. Ensure Docker Compose is running: `docker compose up -d`
+3. Verify PostgreSQL container is healthy: `docker compose ps`
+4. Check database logs: `docker compose logs postgres`
 
 ### Test failures
 
@@ -243,5 +265,5 @@ Make sure to run `deno task db:push` after changing schemas.
 
 - [Drizzle ORM Documentation](https://orm.drizzle.team/)
 - [Drizzle Kit Documentation](https://orm.drizzle.team/kit-docs/overview)
-- [libSQL Documentation](https://docs.turso.tech/libsql)
-- [SQLite Documentation](https://www.sqlite.org/docs.html)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+- [PostgreSQL Docker Image](https://hub.docker.com/_/postgres)

@@ -1,0 +1,25 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "ES2022",
+		"moduleResolution": "bundler",
+		"outDir": "dist",
+		"rootDir": ".",
+		"strict": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"skipLibCheck": true,
+		"jsx": "react-jsx",
+		"jsxImportSource": "hono/jsx",
+		"types": ["node"],
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["src/*"],
+			"@/features/*": ["src/features/*"],
+			"@/shared/*": ["src/shared/*"],
+			"@/db/*": ["src/db/*"]
+		}
+	},
+	"include": ["src", "scripts", "drizzle.config.ts"],
+	"exclude": ["dist", "node_modules", "static"]
+}

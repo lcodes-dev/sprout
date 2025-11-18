@@ -8,6 +8,9 @@ static/css/*.css
 static/js/*.js
 static/css/*.map
 static/js/*.map
+dist/
+node_modules/
+.tsbuildinfo
 
 # Deno
 deno.lock

@@ -5,9 +5,9 @@
  * Add new schema exports here as you create new tables.
  */
 
-export * from "./users.ts"
+export * from "./users.js";
 
 // Add more schema exports here as you create new tables
 // Example:
-// export * from "./posts.ts"
-// export * from "./comments.ts"
+// export * from "./posts.js"
+// export * from "./comments.js"

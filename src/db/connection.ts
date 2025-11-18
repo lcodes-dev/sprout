@@ -1,34 +1,31 @@
 /**
  * Database Connection Module
  *
- * This module manages the database connection using Drizzle ORM with libSQL.
+ * This module manages the database connection using Drizzle ORM with PostgreSQL.
  * It provides a singleton connection instance and utilities for database operations.
  */
 
-import { drizzle } from "drizzle-orm/libsql"
-import { createClient } from "@libsql/client"
-import { dbConfig, validateConfig } from "./config.ts"
-import * as schema from "./schema/index.ts"
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
+import { dbConfig, validateConfig } from "@/db/config";
+import * as schema from "@/db/schema";
 
 /**
- * Initialize the libSQL client
+ * Initialize the PostgreSQL client
  */
 function initClient() {
-  validateConfig()
+	validateConfig();
 
-  const client = createClient({
-    url: dbConfig.url,
-    authToken: dbConfig.authToken,
-  })
-
-  return client
+	return new Pool({
+		connectionString: dbConfig.url,
+	});
 }
 
 /**
  * Database client instance
- * This is the raw libSQL client, use sparingly - prefer using `db` for queries
+ * This is the raw PostgreSQL client, use sparingly - prefer using `db` for queries
  */
-export const client = initClient()
+export const client = initClient();
 
 /**
  * Drizzle database instance
@@ -41,16 +38,16 @@ export const client = initClient()
  * const allUsers = await db.select().from(users)
  */
 export const db = drizzle(client, {
-  schema,
-  logger: dbConfig.verbose,
-})
+	schema,
+	logger: dbConfig.verbose,
+});
 
 /**
  * Close the database connection
  * Call this when shutting down the application
  */
 export async function closeConnection(): Promise<void> {
-  await client.close()
+	await client.end();
 }
 
 /**
@@ -58,11 +55,11 @@ export async function closeConnection(): Promise<void> {
  * Returns true if connection is successful, false otherwise
  */
 export async function testConnection(): Promise<boolean> {
-  try {
-    await client.execute("SELECT 1")
-    return true
-  } catch (error) {
-    console.error("Database connection test failed:", error)
-    return false
-  }
+	try {
+		await db.execute(`SELECT 1`);
+		return true;
+	} catch (error) {
+		console.error("Database connection test failed:", error);
+		return false;
+	}
 }

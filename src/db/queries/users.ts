@@ -5,9 +5,9 @@
  * These utilities demonstrate common patterns for working with Drizzle ORM.
  */
 
-import { eq } from "drizzle-orm"
-import { db } from "../connection.ts"
-import { NewUser, User, users } from "../schema/users.ts"
+import { eq } from "drizzle-orm";
+import { db } from "@/db/connection.js";
+import { type NewUser, type User, users } from "@/db/schema/users.js";
 
 /**
  * Get all users from the database
@@ -19,7 +19,7 @@ import { NewUser, User, users } from "../schema/users.ts"
  * console.log(`Found ${allUsers.length} users`)
  */
 export async function getAllUsers(): Promise<User[]> {
-  return await db.select().from(users)
+	return await db.select().from(users);
 }
 
 /**
@@ -35,8 +35,8 @@ export async function getAllUsers(): Promise<User[]> {
  * }
  */
 export async function getUserById(id: number): Promise<User | undefined> {
-  const result = await db.select().from(users).where(eq(users.id, id))
-  return result[0]
+	const result = await db.select().from(users).where(eq(users.id, id));
+	return result[0];
 }
 
 /**
@@ -51,11 +51,9 @@ export async function getUserById(id: number): Promise<User | undefined> {
  *   console.log(`Found user: ${user.name}`)
  * }
  */
-export async function getUserByEmail(
-  email: string,
-): Promise<User | undefined> {
-  const result = await db.select().from(users).where(eq(users.email, email))
-  return result[0]
+export async function getUserByEmail(email: string): Promise<User | undefined> {
+	const result = await db.select().from(users).where(eq(users.email, email));
+	return result[0];
 }
 
 /**
@@ -73,8 +71,8 @@ export async function getUserByEmail(
  * console.log(`Created user with ID: ${newUser.id}`)
  */
 export async function createUser(userData: NewUser): Promise<User> {
-  const result = await db.insert(users).values(userData).returning()
-  return result[0]
+	const result = await db.insert(users).values(userData).returning();
+	return result[0];
 }
 
 /**
@@ -91,15 +89,15 @@ export async function createUser(userData: NewUser): Promise<User> {
  * }
  */
 export async function updateUser(
-  id: number,
-  userData: Partial<NewUser>,
+	id: number,
+	userData: Partial<NewUser>,
 ): Promise<User | undefined> {
-  const result = await db
-    .update(users)
-    .set(userData)
-    .where(eq(users.id, id))
-    .returning()
-  return result[0]
+	const result = await db
+		.update(users)
+		.set(userData)
+		.where(eq(users.id, id))
+		.returning();
+	return result[0];
 }
 
 /**
@@ -115,8 +113,8 @@ export async function updateUser(
  * }
  */
 export async function deleteUser(id: number): Promise<boolean> {
-  const result = await db.delete(users).where(eq(users.id, id)).returning()
-  return result.length > 0
+	const result = await db.delete(users).where(eq(users.id, id)).returning();
+	return result.length > 0;
 }
 
 /**
@@ -129,6 +127,6 @@ export async function deleteUser(id: number): Promise<boolean> {
  * console.log(`Total users: ${count}`)
  */
 export async function countUsers(): Promise<number> {
-  const result = await db.select().from(users)
-  return result.length
+	const result = await db.select().from(users);
+	return result.length;
 }

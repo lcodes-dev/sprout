@@ -6,8 +6,8 @@
 
 /* Custom Theme Configuration */
 @theme {
-  /* Add custom colors, fonts, etc. here */
-  /* Example:
+	/* Add custom colors, fonts, etc. here */
+	/* Example:
   --color-primary: #3b82f6;
   --font-sans: system-ui, sans-serif;
   */
@@ -15,25 +15,25 @@
 
 /* Custom Base Styles */
 @layer base {
-  html {
-    font-feature-settings: "kern";
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
+	html {
+		font-feature-settings: "kern";
+		text-rendering: optimizeLegibility;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+	}
 
-  body {
-    background-color: white;
-    color: rgb(17 24 39); /* gray-900 */
-  }
+	body {
+		background-color: white;
+		color: rgb(17 24 39); /* gray-900 */
+	}
 }
 
 /* Custom Component Styles */
 @layer components {
-  /* Add your custom component styles here */
+	/* Add your custom component styles here */
 }
 
 /* Custom Utility Styles */
 @layer utilities {
-  /* Add your custom utility styles here */
+	/* Add your custom utility styles here */
 }

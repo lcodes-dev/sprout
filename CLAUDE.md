@@ -2,15 +2,15 @@
 
 ## Project Overview
 
-**Sprout** is a lightweight web application built with [Deno](https://deno.land/) and the [Hono](https://hono.dev/) web framework. This project is a modern, full-featured starter kit leveraging Deno's built-in TypeScript support and Hono's fast, Express-like API.
+**Sprout** is a lightweight web application built with Node.js and the [Hono](https://hono.dev/) web framework. This project is a modern, full-featured starter kit leveraging TypeScript (compiled via `tsc`/`tsx`) and Hono's fast, Express-like API.
 
 **Current State**: Early stage / minimal setup with a single "Hello World" endpoint.
 
 ## Technology Stack
 
-- **Runtime**: Deno (latest stable)
+- **Runtime**: Node.js (latest LTS)
 - **Web Framework**: Hono v4.10.6+
-- **Language**: TypeScript (via Deno's native support)
+- **Language**: TypeScript (compiled with tsc / executed via tsx)
 - **JSX Support**: Precompiled JSX with Hono's JSX runtime (SSR ONLY)
 - **Hotwire**: The project integrates with [Hotwire Turbo](https://turbo.hotwired.dev/)
 - **Alpine.js**: Lightweight JavaScript framework for interactivity ([Alpine.js](https://alpinejs.dev/))
@@ -24,8 +24,8 @@ sprout/
 ├── .git/               # Git repository
 ├── .gitignore          # Git ignore rules (ignores .vscode)
 ├── README.md           # Basic usage instructions
-├── deno.json           # Deno configuration and dependencies
-└── main.ts             # Application entry point
+├── package.json        # Node scripts and dependencies
+└── tsconfig.json       # TypeScript compiler configuration
 ```
 
 ### Expected Directory Structure (as project grows)
@@ -34,7 +34,7 @@ sprout/
 sprout/
 ├── src/main.ts                     # Entry point
 ├── src/features/                   # Each feature will have a subdirectory here
-├── deno.json                       # Configuration
+├── package.json                    # Configuration/scripts
 ├── src/shared/middleware/          # Custom middleware (recommended)
 ├── src/shared/components/          # Custom JSX components. Will use only SSR JSX
 ├── src/shared/layouts/             # Custom JSX components
@@ -90,79 +90,75 @@ After cloning the repository, run these commands:
 # 1. Install git hooks (HIGHLY RECOMMENDED)
 ./scripts/install-git-hooks.sh
 
-# 2. Format all existing files
-deno fmt
+# 2. Install dependencies
+npm install
 
 # 3. Verify everything is working
-deno lint && deno check src/main.ts && deno test --allow-all
+npm run typecheck && npm test
 ```
 
 ### Running the Application
 
 ```bash
-deno task start
-# Equivalent to: deno run --allow-net main.ts
+npm run dev
+# Runs CSS/JS watchers + tsx watch for the server
 ```
 
-The server will start and listen on the default port (typically 8000).
+The server will start and listen on http://localhost:8000 by default.
 
 ### Development Commands
 
-- **Start server**: `deno task start`
-- **Run with watch mode**: `deno run --allow-net --watch main.ts`
-- **Build CSS**: `deno task build:css` - Compile Tailwind CSS
-- **Watch CSS**: `deno task watch:css` - Watch and rebuild CSS on changes
-- **Build JS**: `deno task build:js` - Bundle frontend JavaScript
-- **Watch JS**: `deno task watch:js` - Watch and rebuild JS on changes
-- **Build all assets**: `deno task build` - Build both CSS and JS
-- **Dev mode**: `deno task dev` - Start server and watch all assets
-- **Format code**: `deno fmt`
-- **Lint code**: `deno lint`
-- **Type check**: `deno check main.ts`
+- **Start dev server**: `npm run dev`
+- **Start production build**: `npm run start` (after `npm run build`)
+- **Build CSS**: `npm run build:css` - Compile Tailwind CSS
+- **Watch CSS**: `npm run watch:css`
+- **Build JS**: `npm run build:js` - Bundle frontend JavaScript
+- **Watch JS**: `npm run watch:js`
+- **Build everything**: `npm run build`
+- **Type check**: `npm run typecheck`
+- **Tests**: `npm test`
+- **DB utilities**: `npm run db:init`, `npm run db:push`, `npm run db:studio`
 
 ### Testing
 
-Currently, no test framework is configured. When adding tests:
+Vitest is configured for the project:
 
-1. Use Deno's built-in test runner
-2. Place test files adjacent to source files. Each feature will have a test file for each action. There can also be a test file for the router that tests calling routes.
-3. Name test files with `.test.ts` suffix
-4. Run with: `deno test --allow-net`
+1. Place test files adjacent to source files with the `.test.ts` suffix.
+2. Import `describe`, `it`, and `expect` from `vitest`.
+3. Run all tests with `npm test` (CI) or `npm run test:watch` locally.
 
 ## Dependencies
 
 ### Managing Dependencies
 
-Dependencies are managed via `deno.json` imports map:
+Dependencies are managed via `package.json`:
 
 ```json
 {
-  "imports": {
-    "hono": "jsr:@hono/hono@^4.10.6"
+  "dependencies": {
+    "hono": "^4.10.6",
+    "@hono/node-server": "^1.19.6",
+    "drizzle-orm": "^0.36.4"
   }
 }
 ```
 
 **To add a new dependency**:
-1. Add to the `imports` section in `deno.json`
-2. Use JSR (`jsr:`) for Deno-first packages
-3. Use npm (`npm:`) prefix for npm packages if needed
-4. Use specific version ranges (e.g., `^4.10.6`)
+1. Run `npm install <package>` (or `npm install -D <package>` for dev deps)
+2. Import using standard ES module specifiers
+3. Commit the updated `package.json` and `package-lock.json`
 
-**No lock file**: Deno projects can optionally use `deno.lock`. Consider adding one for reproducible builds:
-```bash
-deno cache --lock=deno.lock --lock-write main.ts
-```
+Node projects rely on `package-lock.json` for reproducible installs—do not edit it manually.
 
 ## Code Conventions
 
 ### General Guidelines
 
 1. **TypeScript First**: Use TypeScript for all code
-2. **Formatting**: Use Deno's built-in formatter (`deno fmt`)
-3. **Linting**: Follow Deno's linting rules (`deno lint`)
-4. **Imports**: Use explicit file extensions (`.ts`, `.tsx`) in imports
-5. **No npm_modules**: Deno doesn't use `node_modules`; dependencies are cached globally
+2. **Formatting**: Use your editor's formatter or Prettier to keep style consistent
+3. **Type Checking**: Run `npm run typecheck` before pushing
+4. **Imports**: Use explicit file extensions (`.ts`, `.tsx`) in imports (NodeNext module resolution)
+5. **Node Modules**: Dependencies are installed into `node_modules/`—commit only `package-lock.json`
 
 ### File Naming
 
@@ -205,6 +201,7 @@ app.get('/user/:id', (c) => {
 The entry point initializes a Hono application with a single route:
 
 ```typescript
+import { serve } from '@hono/node-server'
 import { Hono } from 'hono'
 
 const app = new Hono()
@@ -213,65 +210,61 @@ app.get('/', (c) => {
   return c.text('Hello Hono!')
 })
 
-Deno.serve(app.fetch)
+serve({ fetch: app.fetch, port: 8000 })
 ```
 
 **Key Points**:
-- Uses `Deno.serve()` to start the server
-- Hono's `app.fetch` is passed directly to the serve function
+- Uses `@hono/node-server`'s `serve()` helper to start the server
+- Hono's `app.fetch` is passed directly to the server
 - Currently only has one GET route at `/`
 
 ## AI Assistant Guidelines
 
 ### When Working on This Project
 
-1. **Always use Deno conventions**:
-   - No `require()`, use ES imports
-   - No `package.json`, use `deno.json`
-   - Include file extensions in imports
-   - Use Deno's built-in APIs when possible
+1. **Stick to the Node.js toolchain**:
+   - Use ES module syntax (`import`/`export`)
+   - Keep `package.json`/`tsconfig.json` as the source of truth
+   - Include file extensions in imports (NodeNext semantics)
+   - Prefer built-in Node APIs or well-maintained npm packages
 
-2. **Permission flags**: Remember Deno uses explicit permissions:
-   - `--allow-net` for network access (required for web server)
-   - `--allow-read` for file system reads
-   - `--allow-write` for file system writes
-   - `--allow-env` for environment variables
+2. **Runtime commands live in npm scripts**:
+   - `npm run dev` for the watch server
+   - `npm run build` / `npm run start` for production
+   - Keep scripts organized inside `package.json`
 
 3. **CRITICAL - Pre-commit workflow**:
    - **ALWAYS** run checks before committing code
-   - Format: `deno fmt` (fixes formatting automatically)
-   - Lint: `deno lint` (must pass with 0 errors)
-   - Type check: `deno check src/main.ts` (must pass with 0 errors)
-   - Test: `deno test --allow-all` (all tests must pass)
-   - These are the same checks that run in CI/CD
-   - **Never skip these steps** - they prevent CI/CD failures
+   - Type check: `npm run typecheck`
+   - Tests: `npm test`
+   - Asset build (when relevant): `npm run build`
+   - These mirror the CI workflow—do not skip them
 
 4. **Adding new features**:
-   - Keep routes modular; consider separating into `routes/` directory
-   - Add middleware to `middleware/` directory
-   - Update `deno.json` tasks as needed
-   - Follow the pre-commit workflow above before committing
+   - Keep routes modular; consider separating into `routes/` directories
+   - Add middleware under `src/shared/middleware`
+   - Update documentation when commands or behaviors change
+   - Follow the pre-commit workflow before committing
 
 5. **Dependencies**:
-   - Prefer JSR packages over npm when available
-   - Always specify version constraints
-   - Test after adding new dependencies
-   - Document any required permissions
+   - Use `npm install <pkg>` / `npm install -D <pkg>`
+   - Always commit the updated `package-lock.json`
+   - Re-run tests/type-checks after adding dependencies
 
 6. **TypeScript**:
-   - Leverage Deno's native TypeScript support
-   - No need for `tsconfig.json` (use `deno.json` compilerOptions)
-   - Type check with `deno check`
+   - `tsconfig.json` defines compiler behavior (NodeNext, JSX, etc.)
+   - Keep strict typing enabled
+   - Use `npm run typecheck` (tsc --noEmit) to validate changes
 
 7. **Error Handling**:
-   - Use try-catch blocks for async operations
+   - Use try/catch for async operations
    - Return appropriate HTTP status codes
-   - Log errors appropriately (Deno has `console` built-in)
+   - Log errors via `console` or structured logging utilities
 
 8. **Environment Variables**:
-   - Use `Deno.env.get()` to access environment variables
-   - Consider using a `.env` file with `--allow-env --allow-read`
-   - Add `.env` to `.gitignore` if using
+   - Use `process.env` (dotenv is already configured)
+   - Document required env vars (see `.env.example` when available)
+   - Add new secrets to `.gitignore`-protected files
 
 ### Common Tasks
 
@@ -327,7 +320,7 @@ The project uses Tailwind CSS for styling, which requires a build step to compil
 1. Edit CSS in `assets/css/main.css`
 2. Use Tailwind directives (`@tailwind base`, `@tailwind components`, `@tailwind utilities`)
 3. Add custom CSS classes as needed
-4. Run `deno task build:css` or use watch mode during development
+4. Run `npm run build:css` or `npm run watch:css` during development
 5. Compiled CSS is output to `static/css/main.css`
 6. Reference in HTML: `<link rel="stylesheet" href="/static/css/main.css">`
 
@@ -345,7 +338,7 @@ Frontend JavaScript (Alpine.js, utilities) is organized separately from backend 
 
 **Workflow**:
 1. Write TypeScript in `assets/js/`
-2. Run `deno task build:js` to bundle/transpile
+2. Run `npm run build:js` (or `npm run watch:js`) to bundle/transpile
 3. Output is written to `static/js/main.js`
 4. Reference in HTML: `<script type="module" src="/static/js/main.js"></script>`
 
@@ -389,7 +382,7 @@ The application serves static files from the `static/` directory using Hono's st
 
 **Setup**:
 ```typescript
-import { serveStatic } from 'hono/deno'
+import { serveStatic } from 'hono/serve-static'
 
 app.use('/static/*', serveStatic({ root: './' }))
 ```
@@ -403,13 +396,13 @@ The project uses **Drizzle ORM** with a **code-first approach** (no migrations).
 **Quick Start**:
 ```bash
 # 1. Initialize database directory
-deno task db:init
+npm run db:init
 
 # 2. Sync schema to database
-deno task db:push
+npm run db:push
 
 # 3. (Optional) Launch Drizzle Studio
-deno task db:studio
+npm run db:studio
 ```
 
 ### Database Configuration
@@ -420,9 +413,9 @@ deno task db:studio
 - **Queries**: `src/db/queries/`
 
 **Environment Variables**:
-- `DATABASE_URL`: Database connection URL (default: `file:./data/sprout.db`)
+- `DATABASE_URL`: Database connection URL (default: `file:./sprout.db`)
 - `DATABASE_AUTH_TOKEN`: Auth token for remote databases (optional)
-- `DENO_ENV`: Set to `development` for verbose logging
+- `NODE_ENV`: Set to `development` for verbose logging
 
 ### Using the Database
 
@@ -451,7 +444,7 @@ const newUser = await createUser({
 
 1. Create schema file in `src/db/schema/[table-name].ts`
 2. Export from `src/db/schema/index.ts`
-3. Run `deno task db:push` to sync schema
+3. Run `npm run db:push` to sync schema
 4. Create query utilities in `src/db/queries/[table-name].ts`
 5. Write tests in `src/db/queries/[table-name].test.ts`
 
@@ -476,9 +469,9 @@ export type NewPost = typeof posts.$inferInsert
 
 ### Database Tasks
 
-- `deno task db:init` - Initialize database directory
-- `deno task db:push` - Sync schema changes to database
-- `deno task db:studio` - Launch Drizzle Studio (database UI)
+- `npm run db:init` - Initialize database directory
+- `npm run db:push` - Sync schema changes to database
+- `npm run db:studio` - Launch Drizzle Studio (database UI)
 
 ### Code-First Workflow
 
@@ -508,10 +501,8 @@ See `src/db/README.md` for detailed documentation.
 ```
 
 This will install a pre-commit hook that automatically runs:
-- `deno fmt` - Format code
-- `deno lint` - Lint code
-- `deno check` - Type check
-- `deno test` - Run tests
+- `npm run typecheck` - Type check
+- `npm test` - Run tests
 
 If any check fails, the commit will be blocked. This **prevents CI/CD failures** and ensures code quality.
 
@@ -526,20 +517,14 @@ If any check fails, the commit will be blocked. This **prevents CI/CD failures**
 **ALWAYS run these commands before committing. All must pass without errors:**
 
 ```bash
-# 1. Format code (REQUIRED - fixes formatting automatically)
-deno fmt
+# 1. Type check (REQUIRED - must pass with 0 errors)
+npm run typecheck
 
-# 2. Lint code (REQUIRED - must pass with 0 errors)
-deno lint
+# 2. Run tests (REQUIRED - all tests must pass)
+npm test
 
-# 3. Type check (REQUIRED - must pass with 0 errors)
-deno check src/main.ts
-
-# 4. Run tests (REQUIRED - all tests must pass)
-deno test --allow-all
-
-# 5. Build assets (if applicable)
-deno task build
+# 3. Build assets/server (when touching frontend/backend code)
+npm run build
 ```
 
 **Why this matters:**
@@ -550,21 +535,20 @@ deno task build
 
 **Quick pre-commit command:**
 ```bash
-deno fmt && deno lint && deno check src/main.ts && deno test --allow-all
+npm run typecheck && npm test && npm run build
 ```
 
 If this command completes successfully, you're ready to commit.
 
 ## Performance Considerations
 
-- **Deno is fast**: Native TypeScript execution
-- **Hono is lightweight**: Minimal overhead
+- **Node.js + Hono are lightweight**: keep middleware stacks small
 - **Streaming**: Consider streaming responses for large data
-- **Caching**: Deno caches dependencies; use `--reload` to force refresh
+- **Caching**: Use HTTP caching headers and CDN-backed static hosting
 
 ## Security Best Practices
 
-1. **Permissions**: Only grant necessary permissions in `deno.json` tasks
+1. **Permissions**: Limit access tokens/API keys; avoid running with elevated OS permissions
 2. **Input Validation**: Always validate user input
 3. **Dependencies**: Audit dependencies regularly
 4. **Environment**: Never commit secrets; use environment variables
@@ -573,10 +557,10 @@ If this command completes successfully, you're ready to commit.
 
 ## Resources
 
-- [Deno Documentation](https://docs.deno.com/)
+- [Node.js Documentation](https://nodejs.org/docs/latest/api/)
 - [Hono Documentation](https://hono.dev/)
-- [Deno Standard Library](https://deno.land/std)
-- [JSR Package Registry](https://jsr.io/)
+- [Drizzle ORM Docs](https://orm.drizzle.team/)
+- [Tailwind CSS v4 Docs](https://tailwindcss.com/docs)
 
 ## Project Status & Roadmap
 
@@ -586,10 +570,10 @@ If this command completes successfully, you're ready to commit.
 
 #### 1. Tailwind CSS Integration
 - [ ] **Install Tailwind CSS dependencies**
-  - [ ] Add Tailwind CSS via npm (`npm:tailwindcss`)
-  - [ ] Add PostCSS and autoprefixer if needed
+  - [ ] Add Tailwind CSS via npm (`tailwindcss`, `@tailwindcss/cli`)
+  - [ ] Add PostCSS/autoprefixer if needed
   - [ ] Add Tailwind typography plugin (optional)
-  - [ ] Update `deno.json` with all CSS build dependencies
+  - [ ] Update `package.json` with all CSS build dependencies
 
 - [ ] **Create Tailwind configuration**
   - [ ] Create `tailwind.config.ts` in project root
@@ -609,8 +593,8 @@ If this command completes successfully, you're ready to commit.
   - [ ] Write build script in `scripts/build-css.ts`
   - [ ] Implement Tailwind CLI integration for compilation
   - [ ] Add minification for production builds
-  - [ ] Add `build:css` task to `deno.json`
-  - [ ] Add `watch:css` task for development
+  - [ ] Add `build:css` npm script to `package.json`
+  - [ ] Add `watch:css` script for development
   - [ ] Test CSS compilation and output
 
 - [ ] **Configure static file serving**
@@ -626,19 +610,19 @@ If this command completes successfully, you're ready to commit.
   - [x] Create `assets/js/main.ts` as entry point
 
 - [x] **Install Alpine.js and Hotwire dependencies** ✅
-  - [x] Add `alpinejs` via npm to `deno.json`
-  - [x] Add `@hotwired/turbo` via npm to `deno.json`
-  - [x] Verify imports work with Deno
+  - [x] Add `alpinejs` via npm to `package.json`
+  - [x] Add `@hotwired/turbo` via npm to `package.json`
+  - [x] Verify imports work with Node / esbuild
 
 - [ ] **Create JavaScript build process**
   - [ ] Create `static/js/` output directory
-  - [ ] Choose bundler (esbuild via npm or deno bundle)
+  - [ ] Choose bundler (esbuild via npm)
   - [ ] Write build script in `scripts/build-js.ts`
   - [ ] Configure TypeScript compilation for frontend code
   - [ ] Set up source maps for development
   - [ ] Add minification for production builds
-  - [ ] Add `build:js` task to `deno.json`
-  - [ ] Add `watch:js` task for development
+  - [ ] Add `build:js` npm script to `package.json`
+  - [ ] Add `watch:js` script for development
   - [ ] Test JavaScript bundling and output
 
 - [x] **Create Alpine.js application bootstrap** ✅
@@ -656,10 +640,10 @@ If this command completes successfully, you're ready to commit.
 
 #### 3. Unified Build System
 - [ ] **Create unified build tasks**
-  - [ ] Add `build` task that runs both CSS and JS builds
-  - [ ] Add `watch` task for development (watches both)
-  - [ ] Add `dev` task that runs server + watch
-  - [ ] Create `scripts/build.ts` orchestrator script
+  - [ ] Add `build` script that runs CSS/JS/server builds
+  - [ ] Add `watch` scripts for development (CSS + JS)
+  - [ ] Add `dev` script that runs server + watchers
+  - [ ] Create `scripts/build.ts` orchestrator script if needed
   - [ ] Add build validation and error handling
 
 - [ ] **Optimize build performance**
@@ -699,7 +683,7 @@ If this command completes successfully, you're ready to commit.
   - [ ] Add `.env` to `.gitignore`
 
 - [ ] **Add unit tests**
-  - [ ] Set up Deno test configuration
+  - [ ] Set up Vitest configuration
   - [ ] Create test utilities
   - [ ] Add example tests for routes
   - [ ] Add CI integration for tests
@@ -708,12 +692,11 @@ If this command completes successfully, you're ready to commit.
   - [x] Create `.github/workflows/` directory structure
   - [x] Create `ci.yml` workflow file
   - [x] Configure triggers (push to master, pull requests, tags)
-  - [x] Add Deno setup action
-  - [x] Add linting step (`deno lint`)
-  - [x] Add formatting check step (`deno fmt --check`)
-  - [x] Add type checking step (`deno check`)
-  - [x] Add test step (`deno test`)
-  - [x] Configure Deno dependency caching for faster builds
+  - [x] Add Node.js setup action (`actions/setup-node`)
+  - [x] Install dependencies with `npm ci`
+  - [x] Add type checking step (`npm run typecheck`)
+  - [x] Add test step (`npm test`)
+  - [x] Add build/lint steps as needed
   - [x] Document CI/CD workflow in comments
 
 - [ ] **Configure CORS for API access**

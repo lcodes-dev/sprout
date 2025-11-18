@@ -1,26 +1,24 @@
-import type { Child, FC } from "hono/jsx"
+import type { Child, FC } from "hono/jsx";
 
 interface BaseLayoutProps {
-  title?: string
-  children: Child
+	title?: string;
+	children: Child;
 }
 
 export const BaseLayout: FC<BaseLayoutProps> = ({
-  title = "Sprout - Hono + Deno + Tailwind",
-  children
+	title = "Sprout - Hono + Node + Tailwind",
+	children,
 }) => {
-  return (
-    <html lang="en">
-      <head>
-        <meta charset="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>{title}</title>
-        <link rel="stylesheet" href="/static/css/main.css" />
-        <script type="module" src="/static/js/main.js"></script>
-      </head>
-      <body>
-        {children}
-      </body>
-    </html>
-  )
-}
+	return (
+		<html lang="en">
+			<head>
+				<meta charset="UTF-8" />
+				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+				<title>{title}</title>
+				<link rel="stylesheet" href="/static/css/main.css" />
+				<script type="module" src="/static/js/main.js"></script>
+			</head>
+			<body>{children}</body>
+		</html>
+	);
+};

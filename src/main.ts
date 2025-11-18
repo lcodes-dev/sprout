@@ -1,15 +1,25 @@
-import { Hono } from "hono"
-import { serveStatic } from "hono/deno"
 
-// Import feature routers
-import landing from "./features/landing/index.ts"
+import "dotenv/config";
+import process from "node:process";
+import { serve } from "@hono/node-server";
+import { serveStatic } from "@hono/node-server/serve-static";
+import { Hono } from "hono";
 
-const app = new Hono()
+import landing from "@/features/landing/index";
 
-// Serve static files from the static directory
-app.use("/static/*", serveStatic({ root: "./" }))
+const app = new Hono();
 
-// Register feature routes
-app.route("/", landing)
+app.use("/static/*", serveStatic({ root: "./" }));
+app.route("/", landing);
 
-Deno.serve(app.fetch)
+const port = Number(process.env.PORT) || 8000;
+
+serve(
+	{
+		fetch: app.fetch,
+		port,
+	},
+	(info) => {
+		console.log(`🚀 Sprout server running at http://localhost:${info.port}`);
+	},
+);

@@ -9,15 +9,19 @@
  * schema changes to the database without creating migration files.
  */
 
-import type { Config } from "drizzle-kit"
+import "dotenv/config";
+import process from "node:process";
+import type { Config } from "drizzle-kit";
+
+const databaseUrl = process.env.DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/sprout";
 
 export default {
-  schema: "./src/db/schema/index.ts",
-  out: "./drizzle",
-  dialect: "sqlite",
-  dbCredentials: {
-    url: Deno.env.get("DATABASE_URL") || "file:./data/sprout.db",
-  },
-  verbose: true,
-  strict: true,
-} satisfies Config
+	schema: "./src/db/schema/index.ts",
+	out: "./drizzle",
+	dialect: "postgresql",
+	dbCredentials: {
+		url: databaseUrl,
+	},
+	verbose: true,
+	strict: true,
+} satisfies Config;

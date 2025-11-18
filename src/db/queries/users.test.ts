@@ -2,91 +2,96 @@
  * User Query Tests
  *
  * Tests for user database operations.
- * Run with: deno task test
+ * Run with: npm test
  *
  * Before running tests, ensure:
- * 1. Database is initialized: deno task db:init
- * 2. Schema is synced: deno task db:push
+ * 1. PostgreSQL database is running: docker compose up -d
+ * 2. Test schema is synced once: DATABASE_URL=postgresql://postgres:postgres@localhost:5432/sprout-test npm run db:push
+ *
+ * Note: Tests automatically use the 'sprout-test' database (configured in vitest.config.ts)
+ * The test database is automatically cleaned before tests run.
  */
 
-import { assertEquals, assertExists } from "@std/assert"
+import "dotenv/config";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { closeConnection } from "@/db/connection";
+import { setupTestDatabase, teardownTestDatabase } from "@/db/test-helpers";
+import type { NewUser } from "@/db/schema/users";
 import {
-  countUsers,
-  createUser,
-  deleteUser,
-  getAllUsers,
-  getUserByEmail,
-  getUserById,
-  updateUser,
-} from "./users.ts"
-import type { NewUser } from "../schema/users.ts"
+	countUsers,
+	createUser,
+	deleteUser,
+	getAllUsers,
+	getUserByEmail,
+	getUserById,
+	updateUser,
+} from "./users.js";
 
-Deno.test("User Database Operations", async (t) => {
-  let testUserId: number
+// Setup: Clean test database before running tests
+beforeAll(async () => {
+	await setupTestDatabase();
+});
 
-  await t.step("Create a new user", async () => {
-    const newUser: NewUser = {
-      email: `test-${Date.now()}@example.com`,
-      name: "Test User",
-      passwordHash: "hashed_password_here",
-      role: "user",
-    }
+// Teardown: Clean up database connections and reset database
+afterAll(async () => {
+	await teardownTestDatabase();
+	await closeConnection();
+});
 
-    const createdUser = await createUser(newUser)
-    assertExists(createdUser.id, "User should have an ID")
-    assertEquals(createdUser.email, newUser.email, "Email should match")
-    assertEquals(createdUser.name, newUser.name, "Name should match")
+describe("User database operations", () => {
+	let testUserId: number;
 
-    testUserId = createdUser.id
-  })
+	it("creates a new user", async () => {
+		const newUser: NewUser = {
+			email: `test-${Date.now()}@example.com`,
+			name: "Test User",
+			passwordHash: "hashed_password_here",
+			role: "user",
+		};
 
-  await t.step("Get user by ID", async () => {
-    const user = await getUserById(testUserId)
-    assertExists(user, "User should exist")
-    assertEquals(user?.id, testUserId, "User ID should match")
-  })
+		const createdUser = await createUser(newUser);
+		expect(createdUser.id).toBeDefined();
+		expect(createdUser.email).toBe(newUser.email);
+		expect(createdUser.name).toBe(newUser.name);
 
-  await t.step("Get user by email", async () => {
-    const user = await getUserById(testUserId)
-    assertExists(user, "User should exist")
+		testUserId = createdUser.id;
+	});
 
-    const foundUser = await getUserByEmail(user!.email)
-    assertExists(foundUser, "User should be found by email")
-    assertEquals(foundUser?.id, testUserId, "User ID should match")
-  })
+	it("retrieves a user by ID", async () => {
+		const user = await getUserById(testUserId);
+		expect(user).toBeDefined();
+		expect(user?.id).toBe(testUserId);
+	});
 
-  await t.step("Get all users", async () => {
-    const users = await getAllUsers()
-    assertExists(users, "Users array should exist")
-    assertEquals(
-      users.length >= 1,
-      true,
-      "Should have at least one user",
-    )
-  })
+	it("retrieves a user by email", async () => {
+		const user = await getUserById(testUserId);
+		expect(user).toBeDefined();
 
-  await t.step("Count users", async () => {
-    const count = await countUsers()
-    assertEquals(count >= 1, true, "Should have at least one user")
-  })
+		const foundUser = await getUserByEmail(user?.email ?? "");
+		expect(foundUser).toBeDefined();
+		expect(foundUser?.id).toBe(testUserId);
+	});
 
-  await t.step("Update user", async () => {
-    const updatedUser = await updateUser(testUserId, {
-      name: "Updated Test User",
-    })
-    assertExists(updatedUser, "Updated user should exist")
-    assertEquals(
-      updatedUser?.name,
-      "Updated Test User",
-      "Name should be updated",
-    )
-  })
+	it("lists and counts users", async () => {
+		const users = await getAllUsers();
+		expect(Array.isArray(users)).toBe(true);
+		expect(users.length).toBeGreaterThanOrEqual(1);
 
-  await t.step("Delete user", async () => {
-    const deleted = await deleteUser(testUserId)
-    assertEquals(deleted, true, "User should be deleted")
+		const count = await countUsers();
+		expect(count).toBeGreaterThanOrEqual(1);
+	});
 
-    const user = await getUserById(testUserId)
-    assertEquals(user, undefined, "User should no longer exist")
-  })
-})
+	it("updates and deletes a user", async () => {
+		const updatedUser = await updateUser(testUserId, {
+			name: "Updated Test User",
+		});
+		expect(updatedUser).toBeDefined();
+		expect(updatedUser?.name).toBe("Updated Test User");
+
+		const deleted = await deleteUser(testUserId);
+		expect(deleted).toBe(true);
+
+		const user = await getUserById(testUserId);
+		expect(user).toBeUndefined();
+	});
+});
