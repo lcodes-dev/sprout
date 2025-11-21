@@ -28,6 +28,8 @@
 		"@hotwired/turbo": "^8.0.0",
 		"alpinejs": "^3.14.0",
 		"apexcharts": "^5.3.6",
+		"chart.js": "^4.5.1",
+		"date-fns": "^4.1.0",
 		"dotenv": "^16.4.5",
 		"drizzle-orm": "^0.36.4",
 		"hono": "^4.10.6",
