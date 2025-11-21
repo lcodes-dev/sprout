@@ -6,6 +6,7 @@
  */
 
 export * from "./users.js";
+export * from "./feature-flags.js";
 
 // Add more schema exports here as you create new tables
 // Example:
