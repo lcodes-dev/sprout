@@ -487,6 +487,215 @@ The code-first approach means:
 
 See `src/db/README.md` for detailed documentation.
 
+## Blog System
+
+The blog system is a full-featured content management feature that spans both the admin panel and public frontend. It provides a complete blogging solution with categories, posts, and file attachments.
+
+### Blog Features
+
+**Admin Panel**:
+- List all blog posts with filtering and search
+- Create new blog posts with rich content
+- Edit existing posts
+- Publish/unpublish posts (draft/published status)
+- Delete posts
+- Manage categories
+- Upload and manage attachments (images and downloadable files)
+- Interactive UI with Alpine.js and Hotwire Turbo
+
+**Frontend**:
+- Browse published blog posts
+- Filter posts by category
+- View individual post details
+- Display post images in galleries
+- Download attached files
+- Responsive design with Tailwind CSS
+
+### Blog Database Schema
+
+The blog system uses three main tables:
+
+#### 1. Categories Table
+```typescript
+// src/db/schema/categories.ts
+export const categories = sqliteTable("categories", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull().unique(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+})
+```
+
+#### 2. Posts Table
+```typescript
+// src/db/schema/posts.ts
+export const posts = sqliteTable("posts", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  title: text("title").notNull(),
+  slug: text("slug").notNull().unique(),
+  content: text("content").notNull(),
+  excerpt: text("excerpt"),
+  categoryId: integer("category_id").references(() => categories.id),
+  authorId: integer("author_id").notNull().references(() => users.id),
+  status: text("status").notNull().default("draft"), // 'draft' or 'published'
+  publishedAt: text("published_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+})
+```
+
+#### 3. Post Attachments Table
+```typescript
+// src/db/schema/post-attachments.ts
+export const postAttachments = sqliteTable("post_attachments", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  postId: integer("post_id").notNull().references(() => posts.id, { onDelete: "cascade" }),
+  filePath: text("file_path").notNull(),
+  fileName: text("file_name").notNull(),
+  fileType: text("file_type").notNull(), // 'image' or 'download'
+  mimeType: text("mime_type").notNull(),
+  fileSize: integer("file_size").notNull(),
+  displayOrder: integer("display_order").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+})
+```
+
+### Blog Directory Structure
+
+```
+src/features/blog/
+├── admin/                          # Admin panel functionality
+│   ├── index.ts                    # Admin router
+│   ├── actions/
+│   │   ├── post-list.ts           # List all posts
+│   │   ├── post-create.ts         # Show create form
+│   │   ├── post-store.ts          # Handle post creation
+│   │   ├── post-edit.ts           # Show edit form
+│   │   ├── post-update.ts         # Handle post updates
+│   │   ├── post-delete.ts         # Handle post deletion
+│   │   ├── post-publish.ts        # Toggle publish status
+│   │   ├── category-list.ts       # List categories
+│   │   ├── category-store.ts      # Create category
+│   │   ├── category-update.ts     # Update category
+│   │   ├── category-delete.ts     # Delete category
+│   │   └── upload-attachment.ts   # Handle file uploads
+│   ├── views/
+│   │   ├── layout.tsx             # Admin layout wrapper
+│   │   ├── post-list.tsx          # Posts listing page
+│   │   ├── post-form.tsx          # Post create/edit form
+│   │   └── category-manager.tsx   # Category management UI
+│   └── components/
+│       ├── post-card.tsx          # Post preview card
+│       ├── status-badge.tsx       # Draft/Published badge
+│       ├── attachment-uploader.tsx # File upload component
+│       └── category-select.tsx    # Category dropdown
+├── frontend/                       # Public frontend
+│   ├── index.ts                    # Frontend router
+│   ├── actions/
+│   │   ├── blog-list.ts           # List published posts
+│   │   ├── blog-show.ts           # Show single post
+│   │   └── blog-category.ts       # Filter by category
+│   ├── views/
+│   │   ├── blog-list.tsx          # Blog listing page
+│   │   ├── blog-post.tsx          # Single post view
+│   │   └── blog-sidebar.tsx       # Category filters
+│   └── components/
+│       ├── post-preview.tsx       # Post preview card
+│       ├── category-filter.tsx    # Category filter widget
+│       ├── attachment-gallery.tsx # Image gallery
+│       └── download-list.tsx      # Downloadable files list
+└── shared/
+    ├── types.ts                    # Shared TypeScript types
+    └── utils.ts                    # Shared utilities (slug generation, etc.)
+```
+
+### Storage System
+
+The blog uses an abstracted storage interface to support multiple storage backends:
+
+```typescript
+// src/shared/lib/storage/interface.ts
+export interface StorageProvider {
+  save(file: File, path: string): Promise<string>
+  delete(path: string): Promise<void>
+  exists(path: string): Promise<boolean>
+  getUrl(path: string): string
+}
+```
+
+**Current Implementation**: Local filesystem storage
+**Future Support**: AWS S3, CloudFlare R2, etc.
+
+**Storage locations**:
+- Uploaded files: `uploads/blog/` directory
+- Images: `uploads/blog/images/`
+- Downloads: `uploads/blog/downloads/`
+
+### Blog Routes
+
+**Admin Routes** (prefix: `/admin/blog`):
+- `GET /admin/blog` - List all posts
+- `GET /admin/blog/create` - Show create form
+- `POST /admin/blog` - Create new post
+- `GET /admin/blog/:id/edit` - Show edit form
+- `POST /admin/blog/:id` - Update post
+- `POST /admin/blog/:id/delete` - Delete post
+- `POST /admin/blog/:id/publish` - Toggle publish status
+- `GET /admin/blog/categories` - Manage categories
+- `POST /admin/blog/categories` - Create category
+- `POST /admin/blog/categories/:id` - Update category
+- `DELETE /admin/blog/categories/:id` - Delete category
+- `POST /admin/blog/upload` - Upload attachment
+
+**Frontend Routes** (prefix: `/blog`):
+- `GET /blog` - List published posts
+- `GET /blog/:slug` - View single post
+- `GET /blog/category/:slug` - Filter by category
+
+### Using Alpine.js and Hotwire
+
+**Example: Post Editor with Alpine.js**
+```typescript
+// In post-form.tsx
+<div x-data="postEditor()">
+  <input type="text" x-model="title" @input="generateSlug" />
+  <input type="text" x-model="slug" />
+  <select x-model="status">
+    <option value="draft">Draft</option>
+    <option value="published">Published</option>
+  </select>
+</div>
+```
+
+**Example: Category Filter with Turbo**
+```typescript
+// In blog-list.tsx
+<form data-turbo-frame="posts" data-turbo-action="advance">
+  <select name="category" data-turbo-submit-on-change>
+    <option value="">All Categories</option>
+    {categories.map(cat => <option value={cat.id}>{cat.name}</option>)}
+  </select>
+</form>
+
+<turbo-frame id="posts">
+  {/* Post list content */}
+</turbo-frame>
+```
+
+### Testing Strategy
+
+All blog components include comprehensive tests:
+
+1. **Database Query Tests**: Test CRUD operations for posts, categories, and attachments
+2. **Storage Tests**: Test file upload, deletion, and retrieval
+3. **Route Handler Tests**: Test HTTP endpoints and responses
+4. **Component Tests**: Test JSX rendering and props
+5. **Integration Tests**: Test complete workflows (create post, upload files, publish)
+
+See `src/features/blog/*/actions/*.test.ts` and `src/db/queries/*.test.ts` for examples.
+
 ## Git Workflow
 
 - **Branch naming**: Use descriptive branch names (e.g., `feature/add-user-auth`, `fix/cors-issue`)
@@ -840,6 +1049,170 @@ The cache is automatically refreshed when:
   - [x] Add database utilities (query helpers)
   - [x] Document database workflow (no migrations)
 
+- [ ] **Implement Blog System**
+  - [ ] **Phase 1: Database Schema**
+    - [ ] Create categories schema (`src/db/schema/categories.ts`)
+    - [ ] Create posts schema (`src/db/schema/posts.ts`)
+    - [ ] Create post attachments schema (`src/db/schema/post-attachments.ts`)
+    - [ ] Export schemas from `src/db/schema/index.ts`
+    - [ ] Run `npm run db:push` to sync schema
+    - [ ] Write tests for schema types and constraints
+
+  - [ ] **Phase 2: Database Queries**
+    - [ ] Create categories queries (`src/db/queries/categories.ts`)
+      - [ ] getAllCategories()
+      - [ ] getCategoryById()
+      - [ ] getCategoryBySlug()
+      - [ ] createCategory()
+      - [ ] updateCategory()
+      - [ ] deleteCategory()
+    - [ ] Create posts queries (`src/db/queries/posts.ts`)
+      - [ ] getAllPosts() with filters (status, category, author)
+      - [ ] getPostById() with relations
+      - [ ] getPostBySlug() with relations
+      - [ ] createPost()
+      - [ ] updatePost()
+      - [ ] deletePost()
+      - [ ] publishPost() / unpublishPost()
+    - [ ] Create post attachments queries (`src/db/queries/post-attachments.ts`)
+      - [ ] getAttachmentsByPostId()
+      - [ ] createAttachment()
+      - [ ] deleteAttachment()
+      - [ ] updateDisplayOrder()
+    - [ ] Write comprehensive tests for all query functions
+
+  - [ ] **Phase 3: Storage Interface**
+    - [ ] Create storage interface (`src/shared/lib/storage/interface.ts`)
+      - [ ] Define StorageProvider interface
+      - [ ] Define File type/interface
+    - [ ] Implement local storage (`src/shared/lib/storage/local-storage.ts`)
+      - [ ] Implement save() method
+      - [ ] Implement delete() method
+      - [ ] Implement exists() method
+      - [ ] Implement getUrl() method
+      - [ ] Handle directory creation
+      - [ ] Handle file validation
+    - [ ] Create storage factory (`src/shared/lib/storage/storage-factory.ts`)
+      - [ ] Return appropriate storage provider based on config
+    - [ ] Write tests for storage interface and local implementation
+    - [ ] Create uploads directory structure
+
+  - [ ] **Phase 4: Shared Blog Utilities**
+    - [ ] Create shared types (`src/features/blog/shared/types.ts`)
+      - [ ] PostWithRelations type
+      - [ ] CategoryWithCount type
+      - [ ] AttachmentUpload type
+      - [ ] PostFormData type
+    - [ ] Create shared utilities (`src/features/blog/shared/utils.ts`)
+      - [ ] generateSlug() function
+      - [ ] validateFileType() function
+      - [ ] formatFileSize() function
+      - [ ] formatDate() function
+    - [ ] Write tests for utility functions
+
+  - [ ] **Phase 5: Admin Panel - Components**
+    - [ ] Create admin layout (`src/features/blog/admin/views/layout.tsx`)
+    - [ ] Create post card component (`src/features/blog/admin/components/post-card.tsx`)
+    - [ ] Create status badge component (`src/features/blog/admin/components/status-badge.tsx`)
+    - [ ] Create attachment uploader (`src/features/blog/admin/components/attachment-uploader.tsx`)
+    - [ ] Create category select (`src/features/blog/admin/components/category-select.tsx`)
+    - [ ] Write tests for components
+
+  - [ ] **Phase 6: Admin Panel - Views**
+    - [ ] Create post list view (`src/features/blog/admin/views/post-list.tsx`)
+      - [ ] Table/grid layout
+      - [ ] Filter controls (status, category)
+      - [ ] Search functionality
+      - [ ] Pagination
+      - [ ] Alpine.js for interactivity
+    - [ ] Create post form view (`src/features/blog/admin/views/post-form.tsx`)
+      - [ ] Title and slug fields
+      - [ ] Content editor (textarea for now)
+      - [ ] Excerpt field
+      - [ ] Category select
+      - [ ] Status select (draft/published)
+      - [ ] Attachment uploader
+      - [ ] Alpine.js for slug generation
+    - [ ] Create category manager view (`src/features/blog/admin/views/category-manager.tsx`)
+      - [ ] List existing categories
+      - [ ] Inline editing
+      - [ ] Delete functionality
+    - [ ] Write tests for views
+
+  - [ ] **Phase 7: Admin Panel - Actions**
+    - [ ] Create post list action (`src/features/blog/admin/actions/post-list.ts`)
+    - [ ] Create post create action (`src/features/blog/admin/actions/post-create.ts`)
+    - [ ] Create post store action (`src/features/blog/admin/actions/post-store.ts`)
+    - [ ] Create post edit action (`src/features/blog/admin/actions/post-edit.ts`)
+    - [ ] Create post update action (`src/features/blog/admin/actions/post-update.ts`)
+    - [ ] Create post delete action (`src/features/blog/admin/actions/post-delete.ts`)
+    - [ ] Create post publish action (`src/features/blog/admin/actions/post-publish.ts`)
+    - [ ] Create category list action (`src/features/blog/admin/actions/category-list.ts`)
+    - [ ] Create category store action (`src/features/blog/admin/actions/category-store.ts`)
+    - [ ] Create category update action (`src/features/blog/admin/actions/category-update.ts`)
+    - [ ] Create category delete action (`src/features/blog/admin/actions/category-delete.ts`)
+    - [ ] Create upload attachment action (`src/features/blog/admin/actions/upload-attachment.ts`)
+    - [ ] Write tests for all actions
+
+  - [ ] **Phase 8: Admin Panel - Router**
+    - [ ] Create admin router (`src/features/blog/admin/index.ts`)
+    - [ ] Register all routes
+    - [ ] Add middleware (authentication, etc.)
+    - [ ] Write integration tests for router
+
+  - [ ] **Phase 9: Frontend - Components**
+    - [ ] Create post preview component (`src/features/blog/frontend/components/post-preview.tsx`)
+    - [ ] Create category filter component (`src/features/blog/frontend/components/category-filter.tsx`)
+    - [ ] Create attachment gallery component (`src/features/blog/frontend/components/attachment-gallery.tsx`)
+    - [ ] Create download list component (`src/features/blog/frontend/components/download-list.tsx`)
+    - [ ] Write tests for components
+
+  - [ ] **Phase 10: Frontend - Views**
+    - [ ] Create blog list view (`src/features/blog/frontend/views/blog-list.tsx`)
+      - [ ] Post grid/list
+      - [ ] Category sidebar/filter
+      - [ ] Pagination
+      - [ ] Turbo frame for filtering
+    - [ ] Create blog post view (`src/features/blog/frontend/views/blog-post.tsx`)
+      - [ ] Post title and metadata
+      - [ ] Content rendering
+      - [ ] Image gallery
+      - [ ] Download section
+      - [ ] Category link
+    - [ ] Create blog sidebar view (`src/features/blog/frontend/views/blog-sidebar.tsx`)
+      - [ ] Category list with counts
+      - [ ] Recent posts
+    - [ ] Write tests for views
+
+  - [ ] **Phase 11: Frontend - Actions**
+    - [ ] Create blog list action (`src/features/blog/frontend/actions/blog-list.ts`)
+      - [ ] Fetch published posts
+      - [ ] Apply category filter
+      - [ ] Pagination
+    - [ ] Create blog show action (`src/features/blog/frontend/actions/blog-show.ts`)
+      - [ ] Fetch post by slug
+      - [ ] Include attachments
+      - [ ] 404 handling
+    - [ ] Create blog category action (`src/features/blog/frontend/actions/blog-category.ts`)
+      - [ ] Filter posts by category
+    - [ ] Write tests for all actions
+
+  - [ ] **Phase 12: Frontend - Router**
+    - [ ] Create frontend router (`src/features/blog/frontend/index.ts`)
+    - [ ] Register all routes
+    - [ ] Write integration tests for router
+
+  - [ ] **Phase 13: Integration & Testing**
+    - [ ] Integrate admin router into main app
+    - [ ] Integrate frontend router into main app
+    - [ ] Create end-to-end tests
+      - [ ] Test complete post creation workflow
+      - [ ] Test file upload and display
+      - [ ] Test publish/unpublish workflow
+      - [ ] Test category filtering
+    - [ ] Test Hotwire Turbo interactions
+    - [ ] Test Alpine.js interactivity
+    - [ ] Verify responsive design
 - [ ] **Feature Flag Management System**
   - [ ] **Database Layer**
     - [ ] Create `src/db/schema/feature-flags.ts`
