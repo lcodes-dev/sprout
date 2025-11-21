@@ -6,6 +6,7 @@
  */
 
 export * from "./users.js";
+export * from "./analytics-events.js";
 export * from "./categories.js";
 export * from "./posts.js";
 export * from "./post-attachments.js";

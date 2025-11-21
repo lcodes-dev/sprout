@@ -1049,6 +1049,166 @@ The cache is automatically refreshed when:
   - [x] Add database utilities (query helpers)
   - [x] Document database workflow (no migrations)
 
+### Phase 3: User Analytics System
+
+- [ ] **Infrastructure Layer**
+  - [ ] Create cache interface in `src/shared/lib/cache/`
+    - [ ] Define `CacheInterface` with get/set/delete/clear methods
+    - [ ] Implement `InMemoryCache` class
+    - [ ] Add support for TTL (time-to-live)
+    - [ ] Write unit tests for cache operations
+    - [ ] Document Redis migration path
+
+  - [ ] Create storage interface in `src/shared/lib/storage/`
+    - [ ] Define `StorageInterface` with read/write/delete methods
+    - [ ] Implement `LocalFilesystem` class
+    - [ ] Add file streaming support
+    - [ ] Write unit tests for storage operations
+    - [ ] Document S3 migration path
+
+  - [ ] Set up analytics database schema
+    - [ ] Create `src/db/schema/analytics-events.ts`
+    - [ ] Define table with fields: id, anonymizedIp, userAgent, path, referer, timestamp
+    - [ ] Add indexes for timestamp and path fields
+    - [ ] Export types (AnalyticsEvent, NewAnalyticsEvent)
+    - [ ] Update `src/db/schema/index.ts` to export analytics schema
+    - [ ] Run `npm run db:push` to sync schema
+
+  - [ ] Create analytics query utilities
+    - [ ] Create `src/db/queries/analytics-events.ts`
+    - [ ] Implement `insertAnalyticsEvents(events[])` for batch inserts
+    - [ ] Implement `getAnalyticsForPeriod(days)` for time-based queries
+    - [ ] Implement `getTopPages(limit)` for popular pages
+    - [ ] Implement `getBrowserStats()` for user agent analysis
+    - [ ] Implement `getReferrerStats()` for traffic sources
+    - [ ] Implement `getUniqueVisitors(days)` for visitor counts
+    - [ ] Write comprehensive tests in `analytics-events.test.ts`
+
+- [ ] **Data Collection Layer**
+  - [ ] Create analytics utilities
+    - [ ] Implement IP anonymization in `src/features/analytics/lib/ip-anonymizer.ts`
+      - [ ] Support IPv4 anonymization (set last octet to 0)
+      - [ ] Support IPv6 anonymization (set last 80 bits to 0)
+      - [ ] Write unit tests with various IP formats
+
+    - [ ] Implement path cleaning in `src/features/analytics/lib/path-cleaner.ts`
+      - [ ] Remove sensitive query parameters (token, secret, password, etc.)
+      - [ ] Generalize dynamic segments (/user/123 → /user/:id)
+      - [ ] Handle edge cases (malformed URLs, special characters)
+      - [ ] Write unit tests with various path patterns
+
+  - [ ] Create analytics middleware
+    - [ ] Implement `src/features/analytics/middleware/analytics-collector.ts`
+    - [ ] Extract request metadata (IP, user agent, path, referer)
+    - [ ] Apply IP anonymization and path cleaning
+    - [ ] Send data to cache (non-blocking)
+    - [ ] Handle errors gracefully (don't break user requests)
+    - [ ] Write unit tests for middleware behavior
+    - [ ] Write integration tests with mock Hono context
+
+  - [ ] Implement batch processor
+    - [ ] Create `src/features/analytics/lib/batch-processor.ts`
+    - [ ] Initialize with cache instance
+    - [ ] Implement volume trigger (flush at 500 items)
+    - [ ] Implement time trigger (flush every 1 second using setInterval)
+    - [ ] Handle concurrent flush operations safely
+    - [ ] Implement graceful shutdown
+    - [ ] Write unit tests for both trigger types
+    - [ ] Write integration tests with database
+
+- [ ] **Admin Dashboard Layer**
+  - [ ] Install charting dependencies
+    - [ ] Add `chart.js` via npm
+    - [ ] Add `date-fns` for date manipulation
+    - [ ] Update `package.json` and commit lockfile
+
+  - [ ] Create analytics types
+    - [ ] Create `src/features/analytics/types.ts`
+    - [ ] Define `AnalyticsStats` interface
+    - [ ] Define `ChartData` interface
+    - [ ] Define `Period` type union ('24h' | '7d' | '30d')
+
+  - [ ] Create analytics actions
+    - [ ] Create `src/features/analytics/admin/actions/get-stats.ts`
+      - [ ] Accept period parameter from query string
+      - [ ] Call query utilities to fetch aggregated stats
+      - [ ] Return JSON with totalViews, uniqueVisitors, topPages
+      - [ ] Write unit tests for action
+
+    - [ ] Create `src/features/analytics/admin/actions/get-chart-data.ts`
+      - [ ] Accept chart type and period from query string
+      - [ ] Generate appropriate chart data format
+      - [ ] Support timeseries, topPages, browsers, referrers
+      - [ ] Write unit tests for each chart type
+
+  - [ ] Build admin analytics views
+    - [ ] Create `src/features/analytics/admin/views/components/StatsCard.tsx`
+      - [ ] Accept title, value, change percentage props
+      - [ ] Style with Tailwind CSS
+      - [ ] Add trend indicator (up/down arrow)
+
+    - [ ] Create `src/features/analytics/admin/views/components/TimeSeriesChart.tsx`
+      - [ ] Use Chart.js for line chart
+      - [ ] Alpine.js for period selection (24h, 7d, 30d)
+      - [ ] Fetch data via Turbo Frame
+      - [ ] Show loading state
+
+    - [ ] Create `src/features/analytics/admin/views/components/TopPagesChart.tsx`
+      - [ ] Use Chart.js for horizontal bar chart
+      - [ ] Show top 10 pages
+      - [ ] Include view counts
+
+    - [ ] Create `src/features/analytics/admin/views/components/BrowsersChart.tsx`
+      - [ ] Use Chart.js for doughnut chart
+      - [ ] Parse user agents to extract browser names
+      - [ ] Show percentage breakdown
+
+    - [ ] Create `src/features/analytics/admin/views/components/ReferrersChart.tsx`
+      - [ ] Use Chart.js for bar chart
+      - [ ] Show top referrer sources
+      - [ ] Handle direct traffic
+
+    - [ ] Create `src/features/analytics/admin/views/AnalyticsPage.tsx`
+      - [ ] Import all chart components
+      - [ ] Create layout with stats cards at top
+      - [ ] Arrange charts in grid layout
+      - [ ] Add period selector using Alpine.js
+      - [ ] Wrap charts in Turbo Frames for updates
+
+  - [ ] Create analytics admin router
+    - [ ] Create `src/features/analytics/admin/index.tsx`
+    - [ ] Define route: GET `/admin/analytics`
+    - [ ] Define route: GET `/admin/analytics/api/stats`
+    - [ ] Define route: GET `/admin/analytics/api/chart-data`
+    - [ ] Wire up actions to routes
+    - [ ] Write integration tests for routes
+
+  - [ ] Integrate analytics into main app
+    - [ ] Update `src/main.ts` to import analytics middleware
+    - [ ] Apply middleware to all non-admin routes
+    - [ ] Import and mount admin analytics router at `/admin/analytics`
+    - [ ] Initialize batch processor on app startup
+    - [ ] Handle graceful shutdown of batch processor
+
+- [ ] **Testing & Documentation**
+  - [ ] Write comprehensive tests
+    - [ ] Unit tests for IP anonymizer (100% coverage)
+    - [ ] Unit tests for path cleaner (100% coverage)
+    - [ ] Unit tests for cache interface
+    - [ ] Unit tests for storage interface
+    - [ ] Integration tests for middleware
+    - [ ] Integration tests for batch processor
+    - [ ] Integration tests for database queries
+    - [ ] Integration tests for admin routes
+    - [ ] All tests must pass with `npm test`
+
+  - [ ] Update documentation
+    - [ ] Verify CLAUDE.md analytics section is complete
+    - [ ] Add inline code comments for complex logic
+    - [ ] Add JSDoc comments for all public functions
+    - [ ] Create README in `src/features/analytics/` if needed
+
+### Phase 4: Production Readiness
 - [ ] **Implement Blog System**
   - [ ] **Phase 1: Database Schema**
     - [ ] Create categories schema (`src/db/schema/categories.ts`)
@@ -1456,6 +1616,243 @@ The cache is automatically refreshed when:
   - [ ] Add deployment documentation
   - [ ] Configure production environment
   - [ ] Add deployment scripts
+
+## User Analytics System
+
+The project includes a comprehensive user analytics system built into the admin panel. This system provides privacy-focused website analytics similar to Plausible Analytics, tracking page views, user agents, and traffic patterns while respecting user privacy through IP anonymization.
+
+### Analytics Overview
+
+**Purpose**: Track website usage patterns, popular pages, browser/device statistics, and traffic trends to help administrators understand how users interact with the site.
+
+**Privacy-First Approach**:
+- IP addresses are anonymized (last octet removed)
+- No personal data collection
+- No cookies or client-side tracking
+- Aggregate statistics only
+
+### Architecture
+
+The analytics system consists of several key components:
+
+1. **Data Collection Middleware**: Passively collects analytics data on every non-admin request
+2. **Batch Processing System**: Efficiently writes analytics data to database in batches
+3. **Cache Layer**: In-memory cache with interface for future Redis support
+4. **Storage Layer**: Local filesystem with interface for future S3 support
+5. **Admin Dashboard**: Interactive charts and statistics visualization
+
+### How It Works
+
+#### 1. Data Collection Flow
+
+```
+User Request → Analytics Middleware → Cache → Batch Processor → Database
+```
+
+1. **User makes request** to any route (except `/admin/*`)
+2. **Middleware captures** request metadata:
+   - Anonymized IP (e.g., `192.168.1.0` instead of `192.168.1.123`)
+   - User agent string
+   - Path with cleaned query parameters
+   - Timestamp
+3. **Data sent to cache** (in-memory cache, future: Redis)
+4. **Batch processor** writes to database when:
+   - Cache reaches 500 items, OR
+   - 1 second has elapsed since last write
+5. **Database stores** analytics events for querying
+
+#### 2. Batch Processing Strategy
+
+The batch processor uses a dual-trigger approach for efficiency:
+
+- **Volume Trigger**: When cache reaches 500 items, immediately flush to DB
+- **Time Trigger**: Every 1 second, flush any pending items to DB
+
+This ensures:
+- Minimal database write operations (improved performance)
+- Low latency for analytics data (max 1 second delay)
+- No impact on user-facing request performance
+
+#### 3. Data Privacy & Cleaning
+
+**IP Anonymization**:
+- IPv4: Last octet set to 0 (e.g., `192.168.1.123` → `192.168.1.0`)
+- IPv6: Last 80 bits set to 0 (e.g., `2001:db8::1` → `2001:db8::`)
+
+**Path Cleaning**:
+- Sensitive query parameters removed (e.g., `token`, `secret`, `password`)
+- User IDs generalized (e.g., `/user/123` → `/user/:id`)
+- Session identifiers stripped
+
+### Database Schema
+
+```typescript
+// src/db/schema/analytics-events.ts
+export const analyticsEvents = pgTable("analytics_events", {
+  id: serial("id").primaryKey(),
+  anonymizedIp: text("anonymized_ip").notNull(),
+  userAgent: text("user_agent").notNull(),
+  path: text("path").notNull(),
+  referer: text("referer"),
+  timestamp: timestamp("timestamp").notNull(),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+})
+```
+
+### Admin Dashboard Features
+
+The admin analytics dashboard (`/admin/analytics`) provides:
+
+1. **Overview Statistics**:
+   - Total page views
+   - Unique visitors (estimated by anonymized IP)
+   - Top pages
+   - Average session duration
+
+2. **Interactive Charts** (using Chart.js + Alpine.js):
+   - **Time Series Chart**: Page views over time (24h, 7d, 30d views)
+   - **Top Pages Chart**: Most visited pages (bar chart)
+   - **Browser Statistics**: Browser/device breakdown (pie chart)
+   - **Referrer Sources**: Traffic sources (bar chart)
+
+3. **Real-time Updates**:
+   - Uses Hotwire Turbo for seamless data updates
+   - Alpine.js for interactive filtering and date range selection
+   - No full page reloads required
+
+### API Endpoints
+
+**Admin Analytics Routes** (`/admin/analytics`):
+
+```typescript
+// GET /admin/analytics
+// Renders the main analytics dashboard
+
+// GET /admin/analytics/api/stats?period=7d
+// Returns aggregate statistics for the specified period
+// Response: { totalViews, uniqueVisitors, topPages, ... }
+
+// GET /admin/analytics/api/chart-data?type=timeseries&period=24h
+// Returns data for specific chart type
+// Response: { labels: [...], datasets: [...] }
+```
+
+### Usage in Code
+
+#### Applying Analytics Middleware
+
+```typescript
+// src/main.ts
+import { analyticsMiddleware } from "@/features/analytics/middleware/analytics-collector.js"
+
+const app = new Hono()
+
+// Apply to all routes except admin
+app.use("*", async (c, next) => {
+  if (!c.req.path.startsWith("/admin")) {
+    return analyticsMiddleware(c, next)
+  }
+  return next()
+})
+```
+
+#### Querying Analytics Data
+
+```typescript
+import {
+  getAnalyticsForPeriod,
+  getTopPages,
+  getBrowserStats
+} from "@/db/queries/analytics-events.js"
+
+// Get last 7 days of analytics
+const stats = await getAnalyticsForPeriod(7)
+
+// Get top 10 pages
+const topPages = await getTopPages(10)
+
+// Get browser breakdown
+const browsers = await getBrowserStats()
+```
+
+### Implementation Structure
+
+```
+src/features/analytics/
+├── admin/                          # Admin-only analytics dashboard
+│   ├── index.tsx                   # Admin router
+│   ├── actions/
+│   │   ├── get-stats.ts            # Fetch aggregate statistics
+│   │   └── get-chart-data.ts       # Fetch chart-specific data
+│   ├── views/
+│   │   ├── AnalyticsPage.tsx       # Main dashboard
+│   │   └── components/
+│   │       ├── StatsCard.tsx       # Stat display card
+│   │       ├── TimeSeriesChart.tsx # Page views over time
+│   │       ├── TopPagesChart.tsx   # Popular pages
+│   │       ├── BrowsersChart.tsx   # Browser breakdown
+│   │       └── ReferrersChart.tsx  # Traffic sources
+│   └── admin.test.ts
+├── middleware/
+│   ├── analytics-collector.ts      # Request collection middleware
+│   └── analytics-collector.test.ts
+├── lib/
+│   ├── batch-processor.ts          # Batch write logic
+│   ├── batch-processor.test.ts
+│   ├── ip-anonymizer.ts            # IP anonymization
+│   ├── ip-anonymizer.test.ts
+│   ├── path-cleaner.ts             # Path sanitization
+│   └── path-cleaner.test.ts
+└── types.ts                         # Analytics type definitions
+
+src/shared/lib/cache/
+├── cache.interface.ts               # Generic cache interface
+├── in-memory-cache.ts               # In-memory implementation
+└── in-memory-cache.test.ts
+
+src/shared/lib/storage/
+├── storage.interface.ts             # Generic storage interface
+├── local-filesystem.ts              # Local FS implementation
+└── local-filesystem.test.ts
+
+src/db/schema/
+└── analytics-events.ts              # Analytics DB schema
+
+src/db/queries/
+├── analytics-events.ts              # Analytics queries
+└── analytics-events.test.ts
+```
+
+### Performance Considerations
+
+1. **Batch Writes**: Reduces database load by batching inserts
+2. **Non-blocking**: Middleware doesn't wait for cache/DB operations
+3. **Efficient Queries**: Database queries use indexes on timestamp and path
+4. **Caching**: Future Redis support for distributed caching
+5. **No Client Impact**: Analytics collection is server-side only
+
+### Future Enhancements
+
+- **Redis Cache**: Replace in-memory cache with Redis for multi-instance support
+- **S3 Storage**: Archive old analytics data to S3 for long-term storage
+- **Advanced Filtering**: Filter by date range, page, referrer in dashboard
+- **Export Functionality**: Export analytics data as CSV/JSON
+- **Real-time Dashboard**: WebSocket updates for live analytics
+- **Custom Events**: Track custom events (clicks, form submissions, etc.)
+
+### Testing
+
+All analytics components include comprehensive tests:
+
+- **Unit Tests**: Individual functions (IP anonymization, path cleaning)
+- **Integration Tests**: Middleware, batch processor, database queries
+- **E2E Tests**: Full analytics flow from request to dashboard display
+
+Run tests with:
+```bash
+npm test                    # Run all tests
+npm run test:watch          # Watch mode
+```
 
 ---
 
