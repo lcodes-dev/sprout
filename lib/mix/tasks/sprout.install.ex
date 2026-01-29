@@ -72,7 +72,8 @@ defmodule Mix.Tasks.Sprout.Install do
     # Get app name from Mix project config (most reliable source)
     app_name = Mix.Project.config()[:app] |> to_string()
     app_module = app_name |> Macro.camelize() |> then(&Module.concat([&1]))
-    web_module = Module.concat([app_module, Web])
+    # Phoenix web module is AppNameWeb (not AppName.Web)
+    web_module = Module.concat([String.to_atom(Macro.camelize(app_name) <> "Web")])
     web_path = "lib/#{app_name}_web"
     app_path = "lib/#{app_name}"
 
