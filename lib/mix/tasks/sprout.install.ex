@@ -423,18 +423,14 @@ defmodule Mix.Tasks.Sprout.Install do
     path = "#{assigns[:web_path]}/components/core_components.ex"
     content = render_template("core_components.ex.eex", assigns)
 
-    Igniter.create_or_update_file(igniter, path, content, fn _source ->
-      {:ok, Igniter.Code.Common.parse_to_zipper!(content)}
-    end)
+    Igniter.create_new_file(igniter, path, content, on_exists: :overwrite)
   end
 
   defp create_layouts(igniter, assigns) do
     path = "#{assigns[:web_path]}/components/layouts.ex"
     content = render_template("layouts.ex.eex", assigns)
 
-    Igniter.create_or_update_file(igniter, path, content, fn _source ->
-      {:ok, Igniter.Code.Common.parse_to_zipper!(content)}
-    end)
+    Igniter.create_new_file(igniter, path, content, on_exists: :overwrite)
   end
 
   defp create_root_layout(igniter, assigns) do
