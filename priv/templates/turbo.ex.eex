@@ -1,0 +1,376 @@
+defmodule <%= @web_module %>.Turbo do
+  @moduledoc """
+  Hotwire Turbo integration for Phoenix deadviews.
+
+  Provides helpers for Turbo Drive, Turbo Frames, and Turbo Streams.
+
+  ## Usage
+
+  Import this module in your controller:
+
+      import <%= @web_module %>.Turbo
+
+  Or use it via the web module (already configured).
+
+  ## Request Detection
+
+      if turbo_request?(conn) do
+        # Handle Turbo request
+      end
+
+      if turbo_stream_request?(conn) do
+        # Return Turbo Stream response
+      end
+
+  ## Streaming Responses
+
+      conn
+      |> put_flash(:info, "Created!")
+      |> stream(:prepend, "posts", PostHTML.post(%{post: post}))
+
+  ## Multiple Stream Actions
+
+      conn
+      |> stream(:remove, "post-\#{id}")
+      |> stream(:update, "posts-count", "\#{count}")
+  """
+
+  use Phoenix.Component
+  import Plug.Conn
+
+  @turbo_stream_mime "text/vnd.turbo-stream.html"
+  @actions ~w(append prepend replace update remove before after morph refresh)a
+
+  # ============================================================================
+  # Request Detection
+  # ============================================================================
+
+  @doc """
+  Returns true if the request is from Turbo (Frame or Stream).
+  """
+  def turbo_request?(conn) do
+    turbo_frame_request?(conn) or turbo_stream_request?(conn)
+  end
+
+  @doc """
+  Returns true if the request is a Turbo Frame request.
+  """
+  def turbo_frame_request?(conn) do
+    get_req_header(conn, "turbo-frame") != []
+  end
+
+  @doc """
+  Returns true if the request accepts Turbo Stream responses.
+  """
+  def turbo_stream_request?(conn) do
+    conn
+    |> get_req_header("accept")
+    |> Enum.any?(&String.contains?(&1, @turbo_stream_mime))
+  end
+
+  @doc """
+  Returns the Turbo Frame ID from request headers, if present.
+  """
+  def turbo_frame_id(conn) do
+    case get_req_header(conn, "turbo-frame") do
+      [frame_id] -> frame_id
+      _ -> nil
+    end
+  end
+
+  @doc """
+  Returns true if the request is a Turbo Frame request for the given frame ID.
+  """
+  def turbo_frame_request?(conn, frame_id) do
+    turbo_frame_id(conn) == frame_id
+  end
+
+  # ============================================================================
+  # Streaming
+  # ============================================================================
+
+  @doc """
+  Adds a Turbo Stream action to the connection.
+
+  Accumulates stream actions in conn.private and renders them when the response
+  is sent (via Plug pipeline).
+
+  ## Actions
+
+  - `{:append, target, content}` - Appends content to target
+  - `{:prepend, target, content}` - Prepends content to target
+  - `{:replace, target, content}` - Replaces target element
+  - `{:update, target, content}` - Updates target's innerHTML
+  - `{:remove, target}` - Removes target element
+  - `{:before, target, content}` - Inserts before target
+  - `{:after, target, content}` - Inserts after target
+  - `{:morph, target, content}` - Morphs target element
+  - `{:refresh}` - Triggers page refresh
+
+  ## Examples
+
+      conn
+      |> stream(:prepend, "posts", PostHTML.post(%{post: post}))
+      |> stream(:update, "posts-count", "\#{count}")
+
+      conn
+      |> stream(:remove, "post-\#{post.id}")
+  """
+  def stream(conn, action, target, content \\ nil)
+
+  def stream(conn, action, target, content) when action in @actions do
+    stream_action =
+      if content do
+        {action, target, render_content(content)}
+      else
+        {action, target}
+      end
+
+    actions = get_stream_actions(conn) ++ [stream_action]
+    put_private(conn, :turbo_stream_actions, actions)
+  end
+
+  def stream(conn, :refresh, _target, _content) do
+    actions = get_stream_actions(conn) ++ [{:refresh}]
+    put_private(conn, :turbo_stream_actions, actions)
+  end
+
+  @doc """
+  Sends the accumulated Turbo Stream response.
+
+  Call this at the end of your controller action to send all accumulated
+  stream actions. Includes flash messages automatically.
+
+  ## Options
+
+  - `:status` - HTTP status code (default: 200)
+
+  ## Example
+
+      def create(conn, %{"post" => post_params}) do
+        case Blog.create_post(post_params) do
+          {:ok, post} ->
+            conn
+            |> put_flash(:info, "Post created!")
+            |> stream(:prepend, "posts", PostHTML.post(%{post: post}))
+            |> send_turbo_stream()
+
+          {:error, changeset} ->
+            conn
+            |> put_status(:unprocessable_entity)
+            |> stream(:replace, "post-form", PostHTML.form(%{changeset: changeset}))
+            |> send_turbo_stream()
+        end
+      end
+  """
+  def send_turbo_stream(conn, opts \\ []) do
+    status = Keyword.get(opts, :status, conn.status || 200)
+    actions = get_stream_actions(conn)
+    flash = conn.assigns[:flash] || %{}
+
+    # Add flash messages as stream actions
+    flash_actions = render_flash_actions(flash)
+    all_actions = actions ++ flash_actions
+
+    rendered =
+      all_actions
+      |> Enum.map(&render_action/1)
+      |> Enum.join("\n")
+
+    conn
+    |> put_resp_content_type(@turbo_stream_mime)
+    |> send_resp(status, rendered)
+  end
+
+  @doc """
+  Redirects with Turbo-aware status codes.
+
+  For Turbo requests, uses 303 status to ensure proper handling.
+  """
+  def turbo_redirect(conn, opts) do
+    if turbo_request?(conn) do
+      conn
+      |> put_status(303)
+      |> Phoenix.Controller.redirect(opts)
+    else
+      Phoenix.Controller.redirect(conn, opts)
+    end
+  end
+
+  # ============================================================================
+  # Broadcasting (WebSocket Streams)
+  # ============================================================================
+
+  @doc """
+  Broadcasts Turbo Stream actions to a topic via PubSub.
+
+  All clients subscribed to the topic will receive the update via WebSocket.
+
+  ## Example
+
+      Turbo.broadcast("posts", [{:append, "posts", post_html}])
+  """
+  def broadcast(topic, actions) when is_list(actions) do
+    rendered =
+      actions
+      |> Enum.map(&render_action/1)
+      |> Enum.join("\n")
+
+    Phoenix.PubSub.broadcast(
+      <%= @app_module %>.PubSub,
+      "turbo_stream:#{topic}",
+      {:turbo_stream, rendered}
+    )
+  end
+
+  def broadcast(topic, action) do
+    broadcast(topic, [action])
+  end
+
+  # ============================================================================
+  # Components
+  # ============================================================================
+
+  @doc """
+  Renders a Turbo Frame element.
+
+  ## Attributes
+
+  - `id` - Required. Unique identifier for the frame
+  - `src` - Optional. URL to lazy-load content from
+  - `loading` - Optional. "lazy" or "eager"
+  - `target` - Optional. Target for navigation ("_top", "_self", or frame id)
+
+  ## Examples
+
+      <.turbo_frame id="messages">
+        <div>Content here</div>
+      </.turbo_frame>
+
+      <.turbo_frame id="comments" src={~p"/posts/\#{@post.id}/comments"} loading="lazy">
+        <p>Loading...</p>
+      </.turbo_frame>
+  """
+  attr :id, :string, required: true
+  attr :src, :string, default: nil
+  attr :loading, :string, default: nil, values: ["lazy", "eager", nil]
+  attr :target, :string, default: nil
+  attr :rest, :global
+  slot :inner_block, required: true
+
+  def turbo_frame(assigns) do
+    ~H"""
+    <turbo-frame
+      id={@id}
+      src={@src}
+      loading={@loading}
+      target={@target}
+      {@rest}
+    >
+      <%= render_slot(@inner_block) %>
+    </turbo-frame>
+    """
+  end
+
+  @doc """
+  Component for rendering Turbo Stream actions in templates.
+
+  ## Example
+
+      <.turbo_stream action="append" target="messages">
+        <div id={"message-\#{@message.id}"}>
+          <%= @message.text %>
+        </div>
+      </.turbo_stream>
+  """
+  attr :action, :atom, required: true, values: @actions
+  attr :target, :string, required: true
+  slot :inner_block
+
+  def turbo_stream(assigns) do
+    ~H"""
+    <turbo-stream action={@action} target={@target}>
+      <template>
+        <%= render_slot(@inner_block) %>
+      </template>
+    </turbo-stream>
+    """
+  end
+
+  # ============================================================================
+  # Private Helpers
+  # ============================================================================
+
+  defp get_stream_actions(conn) do
+    conn.private[:turbo_stream_actions] || []
+  end
+
+  defp render_content(content) when is_binary(content), do: content
+
+  defp render_content(%Phoenix.LiveView.Rendered{} = rendered) do
+    rendered |> Phoenix.HTML.Safe.to_iodata() |> IO.iodata_to_binary()
+  end
+
+  defp render_content({:safe, _} = safe) do
+    safe |> Phoenix.HTML.Safe.to_iodata() |> IO.iodata_to_binary()
+  end
+
+  defp render_content(content) when is_function(content, 0) do
+    content.() |> render_content()
+  end
+
+  defp render_action({:refresh}) do
+    ~s(<turbo-stream action="refresh"></turbo-stream>)
+  end
+
+  defp render_action({action, target}) when action in @actions do
+    ~s(<turbo-stream action="#{action}" target="#{target}"></turbo-stream>)
+  end
+
+  defp render_action({action, target, content}) when action in @actions do
+    ~s(<turbo-stream action="#{action}" target="#{target}"><template>#{content}</template></turbo-stream>)
+  end
+
+  defp render_flash_actions(flash) when flash == %{}, do: []
+
+  defp render_flash_actions(flash) do
+    flash
+    |> Enum.filter(fn {_kind, message} -> message && message != "" end)
+    |> Enum.map(fn {kind, message} ->
+      flash_html = render_flash_html(kind, message)
+      {:append, "flash-messages", flash_html}
+    end)
+  end
+
+  defp render_flash_html(kind, message) do
+    id = "flash-#{kind}-#{:erlang.unique_integer([:positive])}"
+    safe_message = Phoenix.HTML.Safe.to_iodata(message) |> IO.iodata_to_binary()
+
+    {alert_class, icon_svg} =
+      case kind do
+        :info ->
+          {"alert-info",
+           ~s(<svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>)}
+
+        :error ->
+          {"alert-error",
+           ~s(<svg class="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>)}
+
+        _ ->
+          {"alert-info", ""}
+      end
+
+    ~s"""
+    <div id="#{id}" data-flash role="alert" class="toast toast-top toast-end z-50">
+      <div class="alert #{alert_class} w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap">
+        #{icon_svg}
+        <div><p>#{safe_message}</p></div>
+        <div class="flex-1"></div>
+        <button type="button" class="group self-start cursor-pointer" aria-label="close" onclick="this.closest('[data-flash]').remove()">
+          <svg class="w-5 h-5 opacity-40 group-hover:opacity-70" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+        </button>
+      </div>
+    </div>
+    """
+  end
+end

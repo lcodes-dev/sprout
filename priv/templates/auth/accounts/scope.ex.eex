@@ -1,0 +1,33 @@
+defmodule <%= app_module %>.Accounts.Scope do
+  @moduledoc """
+  Defines a scope struct to represent the current user.
+
+  The scope is used throughout the application to check permissions
+  and ensure data is properly scoped to the current user.
+  """
+
+  defstruct [:user]
+
+  @doc """
+  Creates a scope for the given user.
+  """
+  def for_user(%<%= app_module %>.Accounts.User{} = user) do
+    %__MODULE__{user: user}
+  end
+
+  def for_user(nil) do
+    nil
+  end
+
+  @doc """
+  Returns the user from the scope.
+  """
+  def user(%__MODULE__{user: user}), do: user
+  def user(nil), do: nil
+
+  @doc """
+  Returns the user ID from the scope.
+  """
+  def user_id(%__MODULE__{user: %{id: id}}), do: id
+  def user_id(nil), do: nil
+end

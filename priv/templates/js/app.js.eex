@@ -1,0 +1,41 @@
+// Phoenix HTML helpers (method=PUT/DELETE in forms and buttons)
+import "phoenix_html";
+
+// Turbo - Hotwire integration
+import { initializeTurbo } from "./turbo";
+
+// Alpine.js - Lightweight JavaScript framework
+import Alpine from "alpinejs";
+
+// BasecoatUI CSS components
+import "basecoat-css/all.min";
+
+// Get CSRF token
+const csrfToken = document
+  .querySelector("meta[name='csrf-token']")
+  ?.getAttribute("content");
+
+// Initialize Turbo for Hotwire functionality
+initializeTurbo("/turbo-socket", { _csrf_token: csrfToken });
+
+// Initialize Alpine.js
+// Alpine must be started after DOM is ready and after Turbo is initialized
+window.Alpine = Alpine;
+
+// Register Alpine components, stores, and directives here
+// Example:
+// Alpine.data('dropdown', () => ({ open: false, toggle() { this.open = !this.open } }))
+// Alpine.store('darkMode', { on: false, toggle() { this.on = !this.on } })
+
+// Start Alpine - it will automatically handle Turbo navigation via MutationObserver
+Alpine.start();
+
+// Reinitialize Alpine components after Turbo navigation
+document.addEventListener("turbo:load", () => {
+  // Alpine auto-initializes new elements via MutationObserver, but we can refresh if needed
+  document
+    .querySelectorAll("[x-data]:not([x-data-initialized])")
+    .forEach((el) => {
+      el.setAttribute("x-data-initialized", "true");
+    });
+});

@@ -1,0 +1,207 @@
+<Layouts.app flash={@flash}>
+  <%!-- Subscribe to WebSocket topic for real-time updates --%>
+  <meta name="turbo-stream-source" content="turbo-example" />
+
+  <h1 class="text-3xl font-bold mb-2">Hotwire Turbo Demo</h1>
+  <p class="text-muted-foreground mb-8">
+    This page demonstrates all Turbo features: Drive, Frames, and Streams (HTTP & WebSocket).
+  </p>
+
+  <div class="grid gap-8">
+    <%!-- ================================================================== --%>
+    <%!-- Section 1: Turbo Drive --%>
+    <%!-- ================================================================== --%>
+    <.card>
+      <:content>
+        <div class="p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-3">
+            <.badge>1</.badge>
+            Turbo Drive
+          </h2>
+          <p class="text-muted-foreground mb-4">
+            Turbo Drive intercepts link clicks and form submissions, replacing full page reloads
+            with AJAX requests. The URL updates, browser history works, but only the &lt;body&gt; is replaced.
+          </p>
+          <.separator class="my-4" />
+          <p class="text-sm mb-4">
+            <strong>How to test:</strong> Click the link below. Notice the page transitions smoothly
+            without a full browser reload. Check the network tab - it's an AJAX request!
+          </p>
+          <a href={~p"/turbo-example/drive-demo"} class="btn">
+            Navigate with Turbo Drive →
+          </a>
+        </div>
+      </:content>
+    </.card>
+
+    <%!-- ================================================================== --%>
+    <%!-- Section 2: Turbo Frames --%>
+    <%!-- ================================================================== --%>
+    <.card>
+      <:content>
+        <div class="p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-3">
+            <.badge variant="secondary">2</.badge>
+            Turbo Frames
+          </h2>
+          <p class="text-muted-foreground mb-4">
+            Turbo Frames scope navigation to a specific part of the page. Only the frame content
+            is updated, not the entire page. Great for tabs, modals, and inline editing.
+          </p>
+          <.separator class="my-4" />
+
+          <%!-- Lazy Loading Frame --%>
+          <div class="mb-6">
+            <h3 class="font-semibold mb-2">Lazy Loading Frame</h3>
+            <p class="text-sm text-muted-foreground mb-3">
+              This frame loads its content lazily when it becomes visible:
+            </p>
+            <div class="bg-muted/30 p-4 rounded-lg">
+              <.turbo_frame id="lazy-content" src={~p"/turbo-example/frame-content"} loading="lazy">
+                <div class="flex items-center gap-2">
+                  <.spinner class="size-4" />
+                  <span>Loading content...</span>
+                </div>
+              </.turbo_frame>
+            </div>
+          </div>
+
+          <%!-- Counter Frame --%>
+          <div>
+            <h3 class="font-semibold mb-2">Interactive Frame (Counter)</h3>
+            <p class="text-sm text-muted-foreground mb-3">
+              This counter updates within its frame. The rest of the page stays unchanged:
+            </p>
+            <div class="bg-muted/30 p-4 rounded-lg">
+              <.counter_component counter={@counter} />
+            </div>
+          </div>
+        </div>
+      </:content>
+    </.card>
+
+    <%!-- ================================================================== --%>
+    <%!-- Section 3: Turbo Streams (HTTP) --%>
+    <%!-- ================================================================== --%>
+    <.card>
+      <:content>
+        <div class="p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-3">
+            <.badge variant="outline">3</.badge>
+            Turbo Streams (HTTP)
+          </h2>
+          <p class="text-muted-foreground mb-4">
+            Turbo Streams allow updating multiple parts of the page from a single HTTP response.
+            The server returns stream actions (append, prepend, replace, remove, update).
+          </p>
+          <.separator class="my-4" />
+
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold">Messages</h3>
+            <div class="flex items-center gap-4">
+              <span id="messages-count" class="text-sm text-muted-foreground">
+                <%= length(@messages) %> messages
+              </span>
+              <a
+                href={~p"/turbo-example/clear"}
+                data-turbo-method="delete"
+                data-turbo-confirm="Clear all messages?"
+                class="btn-ghost btn-sm text-destructive"
+              >
+                Clear All
+              </a>
+            </div>
+          </div>
+
+          <%!-- Message Form --%>
+          <.message_form text="" />
+          <div id="message-form-errors"></div>
+
+          <%!-- Messages List --%>
+          <div id="messages-list" class="mt-4 space-y-2">
+            <.message :for={message <- @messages} message={message} />
+          </div>
+
+          <p class="text-xs text-muted-foreground mt-4">
+            <strong>Actions demonstrated:</strong> prepend (new message), remove (delete), update (counter)
+          </p>
+        </div>
+      </:content>
+    </.card>
+
+    <%!-- ================================================================== --%>
+    <%!-- Section 4: Turbo Streams (WebSocket) --%>
+    <%!-- ================================================================== --%>
+    <.card class="border-2 border-primary/20">
+      <:content>
+        <div class="p-6">
+          <h2 class="text-xl font-semibold mb-4 flex items-center gap-3">
+            <.badge>4</.badge>
+            Turbo Streams (WebSocket)
+            <.badge variant="outline" class="ml-2">Real-time</.badge>
+          </h2>
+          <p class="text-muted-foreground mb-4">
+            Turbo Streams over WebSocket enable real-time updates pushed from the server.
+            Open this page in multiple browser tabs to see messages appear in all of them!
+          </p>
+          <.separator class="my-4" />
+
+          <%!-- Broadcast Form --%>
+          <.broadcast_form text="" />
+          <div id="broadcast-form-errors"></div>
+
+          <%!-- Server Event Trigger --%>
+          <div class="mt-4 p-4 bg-muted/30 rounded-lg">
+            <div class="flex items-center justify-between">
+              <div>
+                <h4 class="font-semibold">Simulate Server Event</h4>
+                <p class="text-sm text-muted-foreground">
+                  Trigger a server-side event that broadcasts to all connected clients.
+                </p>
+                <p id="server-event-status" class="text-xs text-muted-foreground mt-1">
+                  Not triggered yet
+                </p>
+              </div>
+              <form action={~p"/turbo-example/server-event"} method="post">
+                <input type="hidden" name="_csrf_token" value={get_csrf_token()} />
+                <button type="submit" class="btn-outline btn-sm">
+                  Trigger Event
+                </button>
+              </form>
+            </div>
+          </div>
+
+          <%!-- Broadcast Messages --%>
+          <div class="mt-4">
+            <div class="flex items-center justify-between mb-2">
+              <h4 class="font-semibold">Live Messages</h4>
+              <span id="broadcast-count" class="text-sm text-muted-foreground">
+                <%= length(@messages) %> total messages
+              </span>
+            </div>
+            <div id="broadcast-messages" class="space-y-2 max-h-64 overflow-y-auto">
+              <p class="text-sm text-muted-foreground italic">
+                Broadcast messages will appear here in real-time...
+              </p>
+            </div>
+          </div>
+
+          <.alert class="mt-4">
+            <.icon name="hero-information-circle" class="size-5" />
+            <div>
+              <p class="font-semibold">Try it!</p>
+              <p class="text-sm">Open this page in another browser tab or window, then send a broadcast message. It will appear in both!</p>
+            </div>
+          </.alert>
+        </div>
+      </:content>
+    </.card>
+  </div>
+
+  <%!-- Back to Home --%>
+  <div class="mt-8 text-center">
+    <a href={~p"/"} class="btn-ghost">
+      ← Back to Home
+    </a>
+  </div>
+</Layouts.app>

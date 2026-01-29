@@ -1,0 +1,19 @@
+defmodule <%= web_module %>.UserConfirmation.UserConfirmationController do
+  use <%= web_module %>, :controller
+
+  alias <%= app_module %>.Accounts
+
+  def confirm(conn, %{"token" => token}) do
+    case Accounts.confirm_user(token) do
+      {:ok, _} ->
+        conn
+        |> put_flash(:info, "Email confirmed successfully. You can now sign in.")
+        |> redirect(to: ~p"/users/log-in")
+
+      :error ->
+        conn
+        |> put_flash(:error, "Confirmation link is invalid or it has expired.")
+        |> redirect(to: ~p"/users/log-in")
+    end
+  end
+end

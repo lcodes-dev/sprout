@@ -1,0 +1,160 @@
+defmodule <%= @web_module %>.TurboExample.TurboExampleHTML do
+  @moduledoc """
+  HTML module for Turbo Example views.
+
+  Contains function components used for Turbo Stream responses.
+  """
+
+  use <%= @web_module %>, :html
+
+  embed_templates "html/*"
+
+  # ============================================================================
+  # Message Components
+  # ============================================================================
+
+  @doc """
+  Renders a single message item.
+  """
+  attr :message, :map, required: true
+
+  def message(assigns) do
+    ~H"""
+    <div
+      id={"message-#{@message.id}"}
+      class="flex items-center justify-between p-3 bg-muted rounded-lg"
+    >
+      <div>
+        <p class="font-medium"><%%= @message.text %></p>
+        <p class="text-xs text-muted-foreground">
+          <%%= Calendar.strftime(@message.inserted_at, "%H:%M:%S") %>
+        </p>
+      </div>
+      <a
+        href={~p"/turbo-example/messages/#{@message.id}"}
+        data-turbo-method="delete"
+        data-turbo-confirm="Delete this message?"
+        class="btn-ghost btn-sm text-destructive"
+      >
+        Delete
+      </a>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a broadcast message item (for WebSocket demo).
+  """
+  attr :message, :map, required: true
+
+  def broadcast_message(assigns) do
+    ~H"""
+    <div
+      id={"broadcast-message-#{@message.id}"}
+      class="flex items-center justify-between p-3 bg-primary/10 rounded-lg border border-primary/20"
+    >
+      <div>
+        <p class="font-medium"><%%= @message.text %></p>
+        <p class="text-xs text-muted-foreground">
+          <%%= Calendar.strftime(@message.inserted_at, "%H:%M:%S") %>
+        </p>
+      </div>
+      <span class="badge">Live</span>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders the message form.
+  """
+  attr :text, :string, default: ""
+
+  def message_form(assigns) do
+    ~H"""
+    <form
+      id="new-message-form"
+      action={~p"/turbo-example/messages"}
+      method="post"
+      class="flex gap-2"
+    >
+      <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+      <input
+        type="text"
+        name="message[text]"
+        value={@text}
+        placeholder="Type a message..."
+        class="input flex-1"
+        autofocus
+      />
+      <button type="submit" class="btn">
+        Send
+      </button>
+    </form>
+    """
+  end
+
+  @doc """
+  Renders the broadcast form.
+  """
+  attr :text, :string, default: ""
+
+  def broadcast_form(assigns) do
+    ~H"""
+    <form
+      id="broadcast-form"
+      action={~p"/turbo-example/broadcast"}
+      method="post"
+      class="flex gap-2"
+    >
+      <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+      <input
+        type="text"
+        name="message[text]"
+        value={@text}
+        placeholder="Broadcast to all clients..."
+        class="input flex-1"
+      />
+      <button type="submit" class="btn-secondary">
+        Broadcast
+      </button>
+    </form>
+    """
+  end
+
+  @doc """
+  Renders a form error message.
+  """
+  attr :error, :string, required: true
+
+  def form_error(assigns) do
+    ~H"""
+    <p class="text-destructive text-sm mt-1"><%%= @error %></p>
+    """
+  end
+
+  # ============================================================================
+  # Counter Component (for Turbo Frame demo)
+  # ============================================================================
+
+  @doc """
+  Renders the counter component inside a Turbo Frame.
+  """
+  attr :counter, :integer, required: true
+
+  def counter_component(assigns) do
+    ~H"""
+    <.turbo_frame id="counter-frame">
+      <div class="flex items-center gap-4">
+        <span class="text-4xl font-bold"><%%= @counter %></span>
+        <form action={~p"/turbo-example/increment"} method="post">
+          <input type="hidden" name="_csrf_token" value={Phoenix.Controller.get_csrf_token()} />
+          <input type="hidden" name="value" value={@counter} />
+          <button type="submit" class="btn">
+            Increment
+          </button>
+        </form>
+      </div>
+    </.turbo_frame>
+    """
+  end
+end

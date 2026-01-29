@@ -1,0 +1,52 @@
+<Layouts.app flash={@flash}>
+  <div class="max-w-4xl mx-auto">
+    <.card>
+      <:content>
+        <div class="p-6">
+          <h1 class="text-2xl font-bold mb-4">Turbo Drive Demo Page</h1>
+
+          <.alert>
+            <.icon name="hero-check-circle" class="size-5" />
+            <div>
+              <p class="font-semibold">You navigated here with Turbo Drive!</p>
+              <p class="text-sm">Notice how smooth and fast the transition was? No full page reload!</p>
+            </div>
+          </.alert>
+
+          <.separator class="my-6" />
+
+          <div class="prose dark:prose-invert max-w-none">
+            <h3>What happened?</h3>
+            <ol>
+              <li>You clicked a regular <code>&lt;a&gt;</code> link</li>
+              <li>Turbo intercepted the click</li>
+              <li>An AJAX request fetched this page</li>
+              <li>Only the <code>&lt;body&gt;</code> was replaced</li>
+              <li>The URL and browser history were updated</li>
+            </ol>
+
+            <h3>Timestamp</h3>
+            <p>This page was rendered at: <strong><%= Calendar.strftime(@timestamp, "%Y-%m-%d %H:%M:%S") %></strong></p>
+
+            <h3>Key Features</h3>
+            <ul>
+              <li>✅ Browser back/forward buttons work</li>
+              <li>✅ URL updates correctly</li>
+              <li>✅ No JavaScript code needed</li>
+              <li>✅ Forms also work with Turbo Drive</li>
+            </ul>
+          </div>
+
+          <div class="flex justify-between mt-6">
+            <a href={~p"/turbo-example"} class="btn-ghost">
+              ← Back to Demo
+            </a>
+            <a href={~p"/turbo-example/drive-demo"} class="btn">
+              Reload This Page
+            </a>
+          </div>
+        </div>
+      </:content>
+    </.card>
+  </div>
+</Layouts.app>

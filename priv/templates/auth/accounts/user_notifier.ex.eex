@@ -1,0 +1,117 @@
+defmodule <%= app_module %>.Accounts.UserNotifier do
+  @moduledoc """
+  Handles user notification emails using HTML templates.
+  """
+
+  import Swoosh.Email
+  alias <%= app_module %>.Mailer
+  alias <%= web_module %>.Components.Email.EmailComponents
+
+  @doc """
+  Deliver instructions to confirm account.
+  """
+  def deliver_confirmation_instructions(user, url) do
+    deliver(user.email, "Confirm your email", fn assigns ->
+      ~H"""
+      <EmailComponents.heading>Welcome to <%= app_module %>!</EmailComponents.heading>
+      <EmailComponents.p>
+        Hi {@email},
+      </EmailComponents.p>
+      <EmailComponents.p>
+        Thanks for signing up! Please confirm your email address by clicking the button below:
+      </EmailComponents.p>
+      <EmailComponents.email_button url={@url}>
+        Confirm my account
+      </EmailComponents.email_button>
+      <EmailComponents.muted>
+        If you didn't create an account, please ignore this email.
+      </EmailComponents.muted>
+      """
+    end, %{email: user.email, url: url})
+  end
+
+  @doc """
+  Deliver instructions to reset a user password.
+  """
+  def deliver_reset_password_instructions(user, url) do
+    deliver(user.email, "Reset your password", fn assigns ->
+      ~H"""
+      <EmailComponents.heading>Reset your password</EmailComponents.heading>
+      <EmailComponents.p>
+        Hi {@email},
+      </EmailComponents.p>
+      <EmailComponents.p>
+        Someone requested a password reset for your account. If this was you, click the button below:
+      </EmailComponents.p>
+      <EmailComponents.email_button url={@url}>
+        Reset my password
+      </EmailComponents.email_button>
+      <EmailComponents.muted>
+        If you didn't request this change, please ignore this email.
+        This link will expire in 24 hours.
+      </EmailComponents.muted>
+      """
+    end, %{email: user.email, url: url})
+  end
+
+  @doc """
+  Deliver instructions to update a user email.
+  """
+  def deliver_update_email_instructions(user, url) do
+    deliver(user.email, "Confirm your new email", fn assigns ->
+      ~H"""
+      <EmailComponents.heading>Confirm your new email</EmailComponents.heading>
+      <EmailComponents.p>
+        Hi {@email},
+      </EmailComponents.p>
+      <EmailComponents.p>
+        You requested to change your email address. Please confirm by clicking the button below:
+      </EmailComponents.p>
+      <EmailComponents.email_button url={@url}>
+        Confirm new email
+      </EmailComponents.email_button>
+      <EmailComponents.muted>
+        If you didn't request this change, please ignore this email.
+      </EmailComponents.muted>
+      """
+    end, %{email: user.email, url: url})
+  end
+
+  # Helper function to deliver emails using the HTML template
+  defp deliver(recipient, subject, template_fn, assigns) do
+    use Phoenix.Component
+
+    assigns = Map.put(assigns, :__changed__, %{})
+
+    html_body = Mailer.body(fn ->
+      template_fn.(assigns)
+    end)
+
+    text_body = html_to_text(html_body)
+
+    email =
+      new()
+      |> to(recipient)
+      |> from({"<%= app_module %>", "noreply@example.com"})
+      |> subject(subject)
+      |> html_body(html_body)
+      |> text_body(text_body)
+
+    with {:ok, _metadata} <- Mailer.deliver(email) do
+      {:ok, email}
+    end
+  end
+
+  # Convert HTML to plain text for email clients that don't support HTML
+  defp html_to_text(html) do
+    html
+    |> String.replace(~r/<br\s*\/?>/, "\n")
+    |> String.replace(~r/<\/p>/, "\n\n")
+    |> String.replace(~r/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/, "\\2: \\1")
+    |> String.replace(~r/<[^>]+>/, "")
+    |> String.replace(~r/&nbsp;/, " ")
+    |> String.replace(~r/&amp;/, "&")
+    |> String.replace(~r/\n{3,}/, "\n\n")
+    |> String.trim()
+  end
+end

@@ -1,0 +1,26 @@
+<Layouts.simple flash={@flash} current_scope={@current_scope}>
+  <div class="mx-auto max-w-md">
+    <.card>
+      <:header title="Forgot your password?" />
+      <:content>
+        <p class="text-sm text-muted-foreground mb-4">
+          Enter your email address and we'll send you instructions to reset your password.
+        </p>
+        <.form :let={f} for={%{}} as={:user} action={~p"/users/forgot-password"} class="space-y-4">
+          <.input field={f[:email]} type="email" label="Email" autocomplete="email" required />
+          
+          <.button type="submit" class="w-full">
+            Send reset instructions
+          </.button>
+        </.form>
+      </:content>
+    </.card>
+
+    <p class="mt-6 text-center text-sm text-muted-foreground">
+      Remember your password?
+      <.link navigate={~p"/users/log-in"} class="font-medium text-primary underline-offset-4 hover:underline">
+        Sign in
+      </.link>
+    </p>
+  </div>
+</Layouts.simple>

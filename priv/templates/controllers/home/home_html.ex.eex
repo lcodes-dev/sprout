@@ -1,0 +1,10 @@
+defmodule <%= @assigns[:web_module] %>.Home.HomeHTML do
+  @moduledoc """
+  This module contains pages rendered by HomeController.
+
+  See the `html` directory for all templates available.
+  """
+  use <%= @assigns[:web_module] %>, :html
+
+  embed_templates "html/*"
+end

@@ -1,0 +1,7 @@
+defmodule <%= @assigns[:web_module] %>.Home.HomeController do
+  use <%= @assigns[:web_module] %>, :controller
+
+  def index(conn, _params) do
+    render(conn, :index)
+  end
+end

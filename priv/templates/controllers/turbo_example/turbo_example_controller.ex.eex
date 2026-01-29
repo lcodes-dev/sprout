@@ -1,0 +1,203 @@
+defmodule <%= @web_module %>.TurboExample.TurboExampleController do
+  @moduledoc """
+  Example controller demonstrating Hotwire Turbo features:
+
+  1. Turbo Drive - Automatic fast navigation (links work out of the box)
+  2. Turbo Frames - Partial page updates within frame boundaries
+  3. Turbo Streams (HTTP) - Multiple DOM updates via form submission
+  4. Turbo Streams (WebSocket) - Real-time updates via PubSub broadcast
+  """
+
+  use <%= @web_module %>, :controller
+
+  alias <%= @web_module %>.TurboExample.TurboExampleHTML
+
+  # In-memory store for demo (in real app, use database)
+  @messages_agent :turbo_example_messages
+
+  # Helper to render HEEx content to string for broadcasting
+  defp render_to_string(%Phoenix.LiveView.Rendered{} = rendered) do
+    rendered |> Phoenix.HTML.Safe.to_iodata() |> IO.iodata_to_binary()
+  end
+
+  defp render_to_string(content) when is_binary(content), do: content
+
+  def init_store do
+    case Agent.start_link(fn -> [] end, name: @messages_agent) do
+      {:ok, _pid} -> :ok
+      {:error, {:already_started, _pid}} -> :ok
+    end
+  end
+
+  defp get_messages do
+    init_store()
+    Agent.get(@messages_agent, & &1)
+  end
+
+  defp add_message(message) do
+    init_store()
+    id = :erlang.unique_integer([:positive])
+    msg = %{id: id, text: message, inserted_at: DateTime.utc_now()}
+    Agent.update(@messages_agent, fn messages -> [msg | messages] end)
+    msg
+  end
+
+  defp delete_message(id) do
+    init_store()
+    Agent.update(@messages_agent, fn messages ->
+      Enum.reject(messages, &(&1.id == id))
+    end)
+  end
+
+  defp clear_messages do
+    init_store()
+    Agent.update(@messages_agent, fn _ -> [] end)
+  end
+
+  # ============================================================================
+  # Index - Main demo page
+  # ============================================================================
+
+  @doc """
+  Main demo page showing all Turbo features.
+  """
+  def index(conn, _params) do
+    messages = get_messages()
+    render(conn, :index, messages: messages, counter: 0)
+  end
+
+  # ============================================================================
+  # Turbo Drive Demo - Standard navigation
+  # ============================================================================
+
+  @doc """
+  Demonstrates Turbo Drive - clicking links navigates without full page reload.
+  """
+  def drive_demo(conn, _params) do
+    render(conn, :drive_demo, timestamp: DateTime.utc_now())
+  end
+
+  # ============================================================================
+  # Turbo Frame Demo - Partial page updates
+  # ============================================================================
+
+  @doc """
+  Returns content for a Turbo Frame (lazy loading or frame navigation).
+  """
+  def frame_content(conn, _params) do
+    # Simulate some loading time
+    Process.sleep(500)
+    render(conn, :frame_content, loaded_at: DateTime.utc_now())
+  end
+
+  @doc """
+  Increments a counter within a Turbo Frame.
+  """
+  def increment_counter(conn, %{"value" => value}) do
+    new_value = String.to_integer(value) + 1
+    render(conn, :counter, counter: new_value)
+  end
+
+  # ============================================================================
+  # Turbo Streams (HTTP) - Multiple DOM updates
+  # ============================================================================
+
+  @doc """
+  Creates a message and returns Turbo Stream response to update multiple elements.
+  """
+  def create_message(conn, %{"message" => %{"text" => text}}) do
+    if String.trim(text) == "" do
+      conn
+      |> put_status(:unprocessable_entity)
+      |> put_flash(:error, "Message cannot be empty")
+      |> stream(:update, "message-form-errors", TurboExampleHTML.form_error(%{error: "Message cannot be empty"}))
+      |> send_turbo_stream()
+    else
+      message = add_message(text)
+
+      conn
+      |> put_flash(:info, "Message created!")
+      |> stream(:prepend, "messages-list", TurboExampleHTML.message(%{message: message}))
+      |> stream(:update, "messages-count", "#{length(get_messages())} messages")
+      |> stream(:update, "message-form-errors", "")
+      |> stream(:replace, "new-message-form", TurboExampleHTML.message_form(%{text: ""}))
+      |> send_turbo_stream()
+    end
+  end
+
+  @doc """
+  Deletes a message and returns Turbo Stream response.
+  """
+  def delete_message(conn, %{"id" => id}) do
+    id = String.to_integer(id)
+    delete_message(id)
+
+    conn
+    |> put_flash(:info, "Message deleted!")
+    |> stream(:remove, "message-#{id}")
+    |> stream(:update, "messages-count", "#{length(get_messages())} messages")
+    |> send_turbo_stream()
+  end
+
+  @doc """
+  Clears all messages.
+  """
+  def clear_messages(conn, _params) do
+    clear_messages()
+
+    conn
+    |> put_flash(:info, "All messages cleared!")
+    |> stream(:update, "messages-list", "")
+    |> stream(:update, "messages-count", "0 messages")
+    |> send_turbo_stream()
+  end
+
+  # ============================================================================
+  # Turbo Streams (WebSocket) - Real-time broadcasts
+  # ============================================================================
+
+  @doc """
+  Creates a message and broadcasts to all connected clients via WebSocket.
+  """
+  def broadcast_message(conn, %{"message" => %{"text" => text}}) do
+    if String.trim(text) == "" do
+      conn
+      |> put_status(:unprocessable_entity)
+      |> put_flash(:error, "Message cannot be empty")
+      |> stream(:update, "broadcast-form-errors", TurboExampleHTML.form_error(%{error: "Message cannot be empty"}))
+      |> send_turbo_stream()
+    else
+      message = add_message("[Broadcast] " <> text)
+
+      # Broadcast to all connected clients - render content to string first
+      <%= @web_module %>.Turbo.broadcast("turbo-example", [
+        {:prepend, "broadcast-messages", render_to_string(TurboExampleHTML.broadcast_message(%{message: message}))},
+        {:update, "broadcast-count", "#{length(get_messages())} total messages"}
+      ])
+
+      conn
+      |> put_flash(:info, "Message broadcasted to all clients!")
+      |> stream(:update, "broadcast-form-errors", "")
+      |> stream(:replace, "broadcast-form", TurboExampleHTML.broadcast_form(%{text: ""}))
+      |> send_turbo_stream()
+    end
+  end
+
+  @doc """
+  Simulates a server-side event that broadcasts to all clients.
+  """
+  def simulate_server_event(conn, _params) do
+    message = add_message("[Server Event] Automated message at #{DateTime.utc_now()}")
+
+    # Broadcast to all connected clients - render content to string first
+    <%= @web_module %>.Turbo.broadcast("turbo-example", [
+      {:prepend, "broadcast-messages", render_to_string(TurboExampleHTML.broadcast_message(%{message: message}))},
+      {:update, "broadcast-count", "#{length(get_messages())} total messages"}
+    ])
+
+    conn
+    |> put_flash(:info, "Server event triggered!")
+    |> stream(:update, "server-event-status", "Last triggered: #{DateTime.utc_now()}")
+    |> send_turbo_stream()
+  end
+end

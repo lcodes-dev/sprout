@@ -1,0 +1,20 @@
+defmodule <%= app_module %>.Mailer do
+  use Swoosh.Mailer, otp_app: :<%= app_name %>
+
+  import Phoenix.Component, only: [sigil_H: 2]
+
+  alias <%= web_module %>.Components.Email.EmailComponents
+
+  @doc """
+  Renders a HEEx template to an HTML string wrapped in the email layout.
+  """
+  def body(template_fn) when is_function(template_fn, 0) do
+    assigns = %{__changed__: %{}, inner_content: template_fn.()}
+
+    ~H"""
+    <EmailComponents.email_root inner_content={@inner_content} />
+    """
+    |> Phoenix.HTML.Safe.to_iodata()
+    |> IO.iodata_to_binary()
+  end
+end

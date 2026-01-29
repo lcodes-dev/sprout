@@ -1,0 +1,351 @@
+defmodule <%= @web_module %>.Layouts do
+  @moduledoc """
+  This module holds layouts and related functionality
+  used by your application.
+  """
+  use <%= @web_module %>, :html
+
+  # Embed all files in layouts/* within this module.
+  # The default root.html.heex file contains the HTML
+  # skeleton of your application, namely HTML headers
+  # and other static content.
+  embed_templates "layouts/*"
+
+  @doc """
+  Renders the app layout with topbar and footer.
+
+  Ideal for marketing/landing pages and public-facing content.
+
+  ## Examples
+
+      <Layouts.app flash={@flash}>
+        <h1>Welcome to our SaaS</h1>
+      </Layouts.app>
+
+  """
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+
+  attr :current_scope, :map,
+    default: nil,
+    doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
+
+  slot :inner_block, required: true
+
+  def app(assigns) do
+    ~H"""
+    <div class="flex flex-col min-h-screen">
+      <header class="border-b border-border bg-background">
+        <nav class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div class="flex h-16 items-center justify-between">
+            <div class="flex items-center gap-8">
+              <a href="/" class="flex items-center gap-2">
+                <img src={~p"/images/logo.svg"} width="32" height="32" alt="Logo" />
+                <span class="text-lg font-semibold">Phoenix</span>
+              </a>
+              <div class="hidden md:flex items-center gap-6">
+                <a href="/features" class="text-sm text-muted-foreground hover:text-foreground">
+                  Features
+                </a>
+                <a href="/pricing" class="text-sm text-muted-foreground hover:text-foreground">
+                  Pricing
+                </a>
+                <a href="/docs" class="text-sm text-muted-foreground hover:text-foreground">Docs</a>
+              </div>
+            </div>
+            <div class="flex items-center gap-4">
+              <.theme_toggle />
+              <a href="/login" class="btn-ghost btn-sm hidden sm:inline-flex">Sign in</a>
+              <a href="/signup" class="btn btn-sm">Get Started</a>
+            </div>
+          </div>
+        </nav>
+      </header>
+
+      <main class="flex-1">
+        <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+          {render_slot(@inner_block)}
+        </div>
+      </main>
+
+      <footer class="border-t border-border bg-muted/30">
+        <div class="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
+          <div class="grid grid-cols-2 gap-8 md:grid-cols-4">
+            <div>
+              <h3 class="text-sm font-semibold mb-4">Product</h3>
+              <ul class="space-y-2 text-sm text-muted-foreground">
+                <li><a href="/features" class="hover:text-foreground">Features</a></li>
+                <li><a href="/pricing" class="hover:text-foreground">Pricing</a></li>
+                <li><a href="/changelog" class="hover:text-foreground">Changelog</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold mb-4">Company</h3>
+              <ul class="space-y-2 text-sm text-muted-foreground">
+                <li><a href="/about" class="hover:text-foreground">About</a></li>
+                <li><a href="/blog" class="hover:text-foreground">Blog</a></li>
+                <li><a href="/contact" class="hover:text-foreground">Contact</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold mb-4">Resources</h3>
+              <ul class="space-y-2 text-sm text-muted-foreground">
+                <li><a href="/docs" class="hover:text-foreground">Documentation</a></li>
+                <li><a href="/support" class="hover:text-foreground">Support</a></li>
+                <li><a href="/api" class="hover:text-foreground">API Reference</a></li>
+              </ul>
+            </div>
+            <div>
+              <h3 class="text-sm font-semibold mb-4">Legal</h3>
+              <ul class="space-y-2 text-sm text-muted-foreground">
+                <li><a href="/privacy" class="hover:text-foreground">Privacy</a></li>
+                <li><a href="/terms" class="hover:text-foreground">Terms</a></li>
+              </ul>
+            </div>
+          </div>
+          <div class="mt-8 border-t border-border pt-8">
+            <p class="text-sm text-muted-foreground text-center">
+              &copy; 2026 Phoenix Framework. All rights reserved.
+            </p>
+          </div>
+        </div>
+      </footer>
+
+      <.flash_group flash={@flash} />
+    </div>
+    """
+  end
+
+  @doc """
+  Renders the simple layout with centered card.
+
+  Perfect for login, signup, password reset, and other focused single-purpose pages.
+
+  ## Examples
+
+      <Layouts.simple flash={@flash}>
+        <h1>Sign In</h1>
+        <.form for={@form}>...</.form>
+      </Layouts.simple>
+
+  """
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+
+  attr :current_scope, :map,
+    default: nil,
+    doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
+
+  slot :inner_block, required: true
+
+  def simple(assigns) do
+    ~H"""
+    <div class="flex min-h-screen items-center justify-center bg-muted/30 px-4 py-12">
+      <div class="w-full max-w-md">
+        <div class="mb-8 text-center">
+          <a href="/" class="inline-flex items-center gap-2 mb-6">
+            <img src={~p"/images/logo.svg"} width="40" height="40" alt="Logo" />
+            <span class="text-xl font-semibold">Phoenix</span>
+          </a>
+        </div>
+
+        <.card class="w-full">
+          <:content>
+            <div class="p-6">
+              {render_slot(@inner_block)}
+            </div>
+          </:content>
+        </.card>
+
+        <div class="mt-4 text-center">
+          <.theme_toggle />
+        </div>
+      </div>
+
+      <.flash_group flash={@flash} />
+    </div>
+    """
+  end
+
+  @doc """
+  Renders the dashboard layout with sidebar and main content.
+
+  Ideal for authenticated app sections with navigation. The sidebar and main
+  content have independent scroll behavior.
+
+  ## Examples
+
+      <Layouts.dashboard flash={@flash} current_user={@current_user}>
+        <h1>Dashboard</h1>
+        <p>Your content here</p>
+      </Layouts.dashboard>
+
+  """
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+  attr :current_user, :map, default: nil, doc: "the current authenticated user"
+
+  attr :current_scope, :map,
+    default: nil,
+    doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
+
+  slot :inner_block, required: true
+
+  def dashboard(assigns) do
+    ~H"""
+    <div class="flex h-screen overflow-hidden bg-background" x-data="{ sidebarOpen: true }">
+      <%!-- Sidebar --%>
+      <aside
+        x-show="sidebarOpen"
+        class="flex w-64 flex-col border-r border-border bg-muted/30"
+        x-transition:enter="transition ease-out duration-200"
+        x-transition:enter-start="-translate-x-full"
+        x-transition:enter-end="translate-x-0"
+        x-transition:leave="transition ease-in duration-150"
+        x-transition:leave-start="translate-x-0"
+        x-transition:leave-end="-translate-x-full"
+      >
+        <%!-- Sidebar Header --%>
+        <div class="flex h-16 items-center justify-between border-b border-border px-4">
+          <a href="/" class="flex items-center gap-2">
+            <img src={~p"/images/logo.svg"} width="32" height="32" alt="Logo" />
+            <span class="font-semibold">Phoenix</span>
+          </a>
+        </div>
+        <%!-- Sidebar Navigation - scrollable --%>
+        <nav class="flex-1 overflow-y-auto p-4">
+          <div class="space-y-1">
+            <a
+              href="/dashboard"
+              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              <.icon name="hero-home" class="size-5" />
+              <span>Dashboard</span>
+            </a>
+            <a
+              href="/projects"
+              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              <.icon name="hero-folder" class="size-5" />
+              <span>Projects</span>
+            </a>
+            <a
+              href="/team"
+              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              <.icon name="hero-user-group" class="size-5" />
+              <span>Team</span>
+            </a>
+            <a
+              href="/settings"
+              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
+            >
+              <.icon name="hero-cog-6-tooth" class="size-5" />
+              <span>Settings</span>
+            </a>
+          </div>
+        </nav>
+        <%!-- Sidebar Footer --%>
+        <div class="border-t border-border p-4">
+          <div class="flex items-center gap-3">
+            <.avatar
+              :if={@current_user}
+              fallback={String.slice(@current_user.email || "U", 0..1) |> String.upcase()}
+              class="size-8"
+            />
+            <.avatar :if={!@current_user} fallback="U" class="size-8" />
+            <div class="flex-1 min-w-0">
+              <p class="text-sm font-medium truncate">
+                <%= if @current_user, do: @current_user.email, else: "User" %>
+              </p>
+              <p class="text-xs text-muted-foreground">Account</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+      <%!-- Main Content Area --%>
+      <div class="flex flex-1 flex-col overflow-hidden">
+        <%!-- Top Bar --%>
+        <header class="flex h-16 items-center justify-between border-b border-border bg-background px-4">
+          <button @click="sidebarOpen = !sidebarOpen" class="btn-icon-outline">
+            <.icon name="hero-bars-3" class="size-5" />
+          </button>
+          <div class="flex items-center gap-4">
+            <.theme_toggle />
+            <a href="/logout" class="btn-ghost btn-sm">Sign out</a>
+          </div>
+        </header>
+        <%!-- Main Content - scrollable --%>
+        <main class="flex-1 overflow-y-auto bg-muted/30 p-6">
+          {render_slot(@inner_block)}
+        </main>
+      </div>
+
+      <.flash_group flash={@flash} />
+    </div>
+    """
+  end
+
+  @doc """
+  Shows the flash group with standard titles and content.
+
+  ## Examples
+
+      <.flash_group flash={@flash} />
+  """
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+  attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
+
+  def flash_group(assigns) do
+    ~H"""
+    <div id={@id} aria-live="polite">
+      <.flash kind={:info} flash={@flash} />
+      <.flash kind={:error} flash={@flash} />
+
+      <.flash
+        id="client-error"
+        kind={:error}
+        title={gettext("We can't find the internet")}
+        phx-disconnected={show(".phx-client-error #client-error") |> JS.remove_attribute("hidden")}
+        phx-connected={hide("#client-error") |> JS.set_attribute({"hidden", ""})}
+        hidden
+      >
+        {gettext("Attempting to reconnect")}
+        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+      </.flash>
+
+      <.flash
+        id="server-error"
+        kind={:error}
+        title={gettext("Something went wrong!")}
+        phx-disconnected={show(".phx-server-error #server-error") |> JS.remove_attribute("hidden")}
+        phx-connected={hide("#server-error") |> JS.set_attribute({"hidden", ""})}
+        hidden
+      >
+        {gettext("Attempting to reconnect")}
+        <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
+      </.flash>
+    </div>
+    """
+  end
+
+  @doc """
+  Provides dark vs light theme toggle based on BasecoatUI theme system.
+
+  See <head> in root.html.heex which applies the theme before page load.
+  """
+  def theme_toggle(assigns) do
+    ~H"""
+    <button
+      type="button"
+      aria-label="Toggle dark mode"
+      onclick="document.dispatchEvent(new CustomEvent('basecoat:theme'))"
+      class="btn-icon-outline"
+    >
+      <span class="hidden dark:block">
+        <.icon name="hero-sun" class="size-4" />
+      </span>
+      <span class="block dark:hidden">
+        <.icon name="hero-moon" class="size-4" />
+      </span>
+    </button>
+    """
+  end
+end
