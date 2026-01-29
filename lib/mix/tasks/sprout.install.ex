@@ -71,15 +71,14 @@ defmodule Mix.Tasks.Sprout.Install do
 
     # Get app name from Mix project config (most reliable source)
     app_name = Mix.Project.config()[:app] |> to_string()
-    app_module = app_name |> Macro.camelize() |> then(&Module.concat([&1]))
-    # Phoenix web module is AppNameWeb (not AppName.Web)
-    web_module = Module.concat([String.to_atom(Macro.camelize(app_name) <> "Web")])
+    app_module_name = Macro.camelize(app_name)
+    web_module_name = app_module_name <> "Web"
     web_path = "lib/#{app_name}_web"
     app_path = "lib/#{app_name}"
 
     assigns = [
-      web_module: web_module,
-      app_module: app_module,
+      web_module: web_module_name,
+      app_module: app_module_name,
       app_name: app_name,
       web_path: web_path,
       app_path: app_path
@@ -250,18 +249,18 @@ defmodule Mix.Tasks.Sprout.Install do
   # ============================================================================
 
   defp update_web_module(igniter, assigns) do
-    web_module = assigns[:web_module]
+    web_module = Module.concat([assigns[:web_module]])
 
     igniter
     |> Igniter.Project.Module.find_and_update_module!(web_module, fn zipper ->
-      zipper = add_import_to_controller(zipper, web_module)
-      zipper = add_import_to_html(zipper, web_module)
+      zipper = add_import_to_controller(zipper, assigns[:web_module])
+      zipper = add_import_to_html(zipper, assigns[:web_module])
       {:ok, zipper}
     end)
   end
 
   defp add_import_to_controller(zipper, web_module) do
-    import_code = "import #{inspect(web_module)}.Turbo"
+    import_code = "import #{web_module}.Turbo"
 
     case Igniter.Code.Function.move_to_def(zipper, :controller, 0) do
       {:ok, def_zipper} ->
@@ -277,7 +276,7 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp add_import_to_html(zipper, web_module) do
-    import_code = "import #{inspect(web_module)}.Turbo, only: [turbo_frame: 1, turbo_stream: 1]"
+    import_code = "import #{web_module}.Turbo, only: [turbo_frame: 1, turbo_stream: 1]"
 
     case Igniter.Code.Function.move_to_def(zipper, :html, 0) do
       {:ok, def_zipper} ->
@@ -371,10 +370,10 @@ defmodule Mix.Tasks.Sprout.Install do
 
   defp update_endpoint(igniter, assigns) do
     web_module = assigns[:web_module]
-    endpoint_module = Module.concat(web_module, Endpoint)
+    endpoint_module = Module.concat([web_module, "Endpoint"])
 
     socket_code = """
-    socket "/turbo-socket", #{inspect(web_module)}.Channels.TurboSocket,
+    socket "/turbo-socket", #{web_module}.Channels.TurboSocket,
       websocket: true,
       longpoll: true
     """
@@ -471,7 +470,7 @@ defmodule Mix.Tasks.Sprout.Install do
     web_module = assigns[:web_module]
 
     igniter
-    |> Igniter.Project.Module.find_and_update_module!(Module.concat(web_module, Router), fn zipper ->
+    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
       node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
       cond do
@@ -580,7 +579,7 @@ defmodule Mix.Tasks.Sprout.Install do
     web_module = assigns[:web_module]
 
     route_content = """
-    scope "/turbo-example", #{inspect(web_module)}.TurboExample do
+    scope "/turbo-example", #{web_module}.TurboExample do
       pipe_through :browser
 
       get "/", TurboExampleController, :index
@@ -599,7 +598,7 @@ defmodule Mix.Tasks.Sprout.Install do
       igniter,
       "/turbo-example",
       route_content,
-      arg2: Module.concat(web_module, TurboExample)
+      arg2: Module.concat([web_module, "TurboExample"])
     )
   end
 
@@ -782,7 +781,7 @@ defmodule Mix.Tasks.Sprout.Install do
     web_module = assigns[:web_module]
 
     igniter
-    |> Igniter.Project.Module.find_and_update_module!(Module.concat(web_module, Router), fn zipper ->
+    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
       node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
       if String.contains?(node_string, "UserAuth") do
@@ -790,12 +789,12 @@ defmodule Mix.Tasks.Sprout.Install do
       else
         # Add import and plugs
         auth_code = """
-        import #{inspect(web_module)}.UserAuth
+        import #{web_module}.UserAuth
         """
 
         routes_code = """
         # Public auth routes
-        scope "/", #{inspect(web_module)} do
+        scope "/", #{web_module} do
           pipe_through [:browser]
 
           get "/users/log-in", UserSession.UserSessionController, :new
@@ -804,7 +803,7 @@ defmodule Mix.Tasks.Sprout.Install do
         end
 
         # Routes for non-authenticated users
-        scope "/", #{inspect(web_module)} do
+        scope "/", #{web_module} do
           pipe_through [:browser, :redirect_if_user_is_authenticated]
 
           get "/users/register", UserRegistration.UserRegistrationController, :new
@@ -817,7 +816,7 @@ defmodule Mix.Tasks.Sprout.Install do
         end
 
         # Routes for authenticated users
-        scope "/", #{inspect(web_module)} do
+        scope "/", #{web_module} do
           pipe_through [:browser, :require_authenticated_user]
 
           get "/dashboard", Dashboard.DashboardController, :index
@@ -852,12 +851,12 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp maybe_add_auth_import(string, web_module, auth_code) do
-    if String.contains?(string, "import #{inspect(web_module)}.UserAuth") do
+    if String.contains?(string, "import #{web_module}.UserAuth") do
       string
     else
       String.replace(
         string,
-        ~r/(use #{inspect(web_module)}, :router\s*\n)/,
+        ~r/(use #{web_module}, :router\s*\n)/,
         "\\1\n#{auth_code}\n"
       )
     end
