@@ -156,22 +156,27 @@ defmodule Mix.Tasks.Sprout.Install do
     |> EEx.eval_string(assigns: assigns)
   end
 
+  defp read_template(name) do
+    template_path(name)
+    |> File.read!()
+  end
+
   # ============================================================================
   # Create Agent Instruction Files
   # ============================================================================
 
-  defp create_agents_md(igniter, assigns) do
+  defp create_agents_md(igniter, _assigns) do
     path = "AGENTS.md"
-    content = render_template("AGENTS.md.eex", assigns)
+    content = read_template("AGENTS.md")
 
     Igniter.create_or_update_file(igniter, path, content, fn _source ->
       {:ok, content}
     end)
   end
 
-  defp create_claude_md(igniter, assigns) do
+  defp create_claude_md(igniter, _assigns) do
     path = "CLAUDE.md"
-    content = render_template("CLAUDE.md.eex", assigns)
+    content = read_template("CLAUDE.md")
 
     Igniter.create_or_update_file(igniter, path, content, fn _source ->
       {:ok, content}
