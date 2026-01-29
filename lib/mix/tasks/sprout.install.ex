@@ -219,9 +219,7 @@ defmodule Mix.Tasks.Sprout.Install do
     path = "assets/js/app.js"
     content = render_template("js/app.js.eex", assigns)
 
-    Igniter.create_or_update_file(igniter, path, content, fn _source ->
-      {:ok, content}
-    end)
+    Igniter.create_new_file(igniter, path, content, on_exists: :overwrite)
   end
 
   # ============================================================================
@@ -232,16 +230,7 @@ defmodule Mix.Tasks.Sprout.Install do
     path = "assets/css/app.css"
     content = render_template("css/app.css.eex", assigns)
 
-    Igniter.create_or_update_file(igniter, path, content, fn source ->
-      source_content = Rewrite.Source.get(source, :content)
-
-      # Check if basecoat-css is already imported
-      if String.contains?(source_content, "basecoat-css") do
-        {:ok, source_content}
-      else
-        {:ok, content}
-      end
-    end)
+    Igniter.create_new_file(igniter, path, content, on_exists: :overwrite)
   end
 
   # ============================================================================
@@ -252,26 +241,7 @@ defmodule Mix.Tasks.Sprout.Install do
     path = "assets/package.json"
     new_content = render_template("js/package.json.eex", assigns)
 
-    Igniter.create_or_update_file(igniter, path, new_content, fn source ->
-      source_content = Rewrite.Source.get(source, :content)
-
-      case Jason.decode(source_content) do
-        {:ok, existing} ->
-          {:ok, new_deps} = Jason.decode(new_content)
-
-          merged = Map.merge(existing, %{
-            "dependencies" => Map.merge(
-              existing["dependencies"] || %{},
-              new_deps["dependencies"] || %{}
-            )
-          })
-
-          {:ok, Jason.encode!(merged, pretty: true)}
-
-        {:error, _} ->
-          {:ok, new_content}
-      end
-    end)
+    Igniter.create_new_file(igniter, path, new_content, on_exists: :overwrite)
   end
 
   # ============================================================================
@@ -470,9 +440,7 @@ defmodule Mix.Tasks.Sprout.Install do
     path = "#{assigns[:web_path]}/components/layouts/root.html.heex"
     content = render_template("layouts/root.html.heex.eex", assigns)
 
-    Igniter.create_or_update_file(igniter, path, content, fn _source ->
-      {:ok, content}
-    end)
+    Igniter.create_new_file(igniter, path, content, on_exists: :overwrite)
   end
 
   # ============================================================================
@@ -702,9 +670,7 @@ defmodule Mix.Tasks.Sprout.Install do
   defp create_mailer(igniter, assigns) do
     path = "#{assigns[:app_path]}/mailer.ex"
     content = render_template("auth/mailer.ex.eex", assigns)
-    Igniter.create_or_update_file(igniter, path, content, fn _source ->
-      {:ok, content}
-    end)
+    Igniter.create_new_file(igniter, path, content, on_exists: :overwrite)
   end
 
   defp create_email_components(igniter, assigns) do
@@ -899,66 +865,21 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp add_auth_config(igniter, assigns) do
-    app_name = assigns[:app_name]
-
-    # Add config to config.exs
-    config_content = """
-    # Password configuration
-    config :#{app_name}, :password_min_length, 8
-    config :#{app_name}, :password_validate_complexity, true
-    """
-
-    dev_config = """
-    # Development password settings (relaxed)
-    config :#{app_name}, :password_min_length, 6
-    config :#{app_name}, :password_validate_complexity, false
-    """
-
-    test_config = """
-    # Test password settings (relaxed)
-    config :#{app_name}, :password_min_length, 6
-    config :#{app_name}, :password_validate_complexity, false
-    """
-
-    prod_config = """
-    # Production password settings (strict)
-    config :#{app_name}, :password_min_length, 8
-    config :#{app_name}, :password_validate_complexity, true
-    """
+    app_name = String.to_atom(assigns[:app_name])
 
     igniter
-    |> Igniter.create_or_update_file("config/config.exs", config_content, fn source ->
-      source_content = Rewrite.Source.get(source, :content)
-      if String.contains?(source_content, "password_min_length") do
-        {:ok, source_content}
-      else
-        {:ok, source_content <> "\n" <> config_content}
-      end
-    end)
-    |> Igniter.create_or_update_file("config/dev.exs", dev_config, fn source ->
-      source_content = Rewrite.Source.get(source, :content)
-      if String.contains?(source_content, "password_min_length") do
-        {:ok, source_content}
-      else
-        {:ok, source_content <> "\n" <> dev_config}
-      end
-    end)
-    |> Igniter.create_or_update_file("config/test.exs", test_config, fn source ->
-      source_content = Rewrite.Source.get(source, :content)
-      if String.contains?(source_content, "password_min_length") do
-        {:ok, source_content}
-      else
-        {:ok, source_content <> "\n" <> test_config}
-      end
-    end)
-    |> Igniter.create_or_update_file("config/prod.exs", prod_config, fn source ->
-      source_content = Rewrite.Source.get(source, :content)
-      if String.contains?(source_content, "password_min_length") do
-        {:ok, source_content}
-      else
-        {:ok, source_content <> "\n" <> prod_config}
-      end
-    end)
+    # Production defaults in config.exs
+    |> Igniter.Project.Config.configure("config.exs", app_name, [:password_min_length], 8)
+    |> Igniter.Project.Config.configure("config.exs", app_name, [:password_validate_complexity], true)
+    # Development settings (relaxed)
+    |> Igniter.Project.Config.configure("dev.exs", app_name, [:password_min_length], 6)
+    |> Igniter.Project.Config.configure("dev.exs", app_name, [:password_validate_complexity], false)
+    # Test settings (relaxed)
+    |> Igniter.Project.Config.configure("test.exs", app_name, [:password_min_length], 6)
+    |> Igniter.Project.Config.configure("test.exs", app_name, [:password_validate_complexity], false)
+    # Production settings (strict) - these will override config.exs
+    |> Igniter.Project.Config.configure("prod.exs", app_name, [:password_min_length], 8)
+    |> Igniter.Project.Config.configure("prod.exs", app_name, [:password_validate_complexity], true)
   end
 
   defp copy_small_logo(igniter) do
