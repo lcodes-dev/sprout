@@ -169,18 +169,14 @@ defmodule Mix.Tasks.Sprout.Install do
     path = "AGENTS.md"
     content = read_template("AGENTS.md")
 
-    Igniter.create_or_update_file(igniter, path, content, fn _source ->
-      {:ok, content}
-    end)
+    Igniter.create_new_file(igniter, path, content, on_exists: :overwrite)
   end
 
   defp create_claude_md(igniter, _assigns) do
     path = "CLAUDE.md"
     content = read_template("CLAUDE.md")
 
-    Igniter.create_or_update_file(igniter, path, content, fn _source ->
-      {:ok, content}
-    end)
+    Igniter.create_new_file(igniter, path, content, on_exists: :overwrite)
   end
 
   # ============================================================================
