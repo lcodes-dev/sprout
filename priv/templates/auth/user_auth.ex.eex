@@ -1,19 +1,19 @@
-defmodule <%= web_module %>.UserAuth do
+defmodule <%= @web_module %>.UserAuth do
   @moduledoc """
   Handles user authentication and session management.
   """
-  use <%= web_module %>, :verified_routes
+  use <%= @web_module %>, :verified_routes
 
   import Plug.Conn
   import Phoenix.Controller
 
-  alias <%= app_module %>.Accounts
+  alias <%= @app_module %>.Accounts
 
   # Make the remember me cookie valid for 365 days.
   # If you want bump or reduce this value, also change
   # the token expiry itself in UserToken.
   @max_age 60 * 60 * 24 * 365
-  @remember_me_cookie "_<%= app_name %>_user_remember_me"
+  @remember_me_cookie "_<%= @app_name %>_user_remember_me"
   @remember_me_options [sign: true, max_age: @max_age, same_site: "Lax"]
 
   # Session validity without remember me (1 day)
@@ -83,7 +83,7 @@ defmodule <%= web_module %>.UserAuth do
     user_token && Accounts.delete_user_session_token(user_token)
 
     if live_socket_id = get_session(conn, :live_socket_id) do
-      <%= web_module %>.Endpoint.broadcast(live_socket_id, "disconnect", %{})
+      <%= @web_module %>.Endpoint.broadcast(live_socket_id, "disconnect", %{})
     end
 
     conn
@@ -139,16 +139,16 @@ defmodule <%= web_module %>.UserAuth do
   Use the `on_mount` lifecycle macro in LiveViews to mount or authenticate
   the current_scope:
 
-      defmodule <%= web_module %>.PageLive do
-        use <%= web_module %>, :live_view
+      defmodule <%= @web_module %>.PageLive do
+        use <%= @web_module %>, :live_view
 
-        on_mount {<%= web_module %>.UserAuth, :mount_current_scope}
+        on_mount {<%= @web_module %>.UserAuth, :mount_current_scope}
         ...
       end
 
   Or use the `live_session` of your router to invoke the on_mount callback:
 
-      live_session :authenticated, on_mount: [{<%= web_module %>.UserAuth, :require_authenticated}] do
+      live_session :authenticated, on_mount: [{<%= @web_module %>.UserAuth, :require_authenticated}] do
         live "/profile", ProfileLive, :index
       end
   """

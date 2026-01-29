@@ -1,8 +1,8 @@
-defmodule <%= web_module %>.UserSession.UserSessionController do
-  use <%= web_module %>, :controller
+defmodule <%= @web_module %>.UserSession.UserSessionController do
+  use <%= @web_module %>, :controller
 
-  alias <%= app_module %>.Accounts
-  alias <%= web_module %>.UserAuth
+  alias <%= @app_module %>.Accounts
+  alias <%= @web_module %>.UserAuth
 
   def new(conn, _params) do
     render(conn, :new, error_message: nil)

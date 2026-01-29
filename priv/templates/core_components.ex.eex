@@ -213,8 +213,8 @@ defmodule <%= @web_module %>.CoreComponents do
     <div class={["card", @class]} {@rest}>
       <header :if={@header != []}>
         <%%= for h <- @header do %>
-          <h2>{h.title}</h2>
-          <p :if={render_slot(h) != []}>{render_slot(h)}</p>
+          <h2 :if={h[:title]}>{h.title}</h2>
+          <p :if={h[:inner_block]}>{render_slot(h)}</p>
         <%% end %>
       </header>
       <section>

@@ -1,12 +1,12 @@
-defmodule <%= app_module %>.Accounts do
+defmodule <%= @app_module %>.Accounts do
   @moduledoc """
   The Accounts context.
   """
 
   import Ecto.Query, warn: false
-  alias <%= app_module %>.Repo
+  alias <%= @app_module %>.Repo
 
-  alias <%= app_module %>.Accounts.{User, UserToken, UserNotifier, Scope}
+  alias <%= @app_module %>.Accounts.{User, UserToken, UserNotifier, Scope}
 
   ## Scopes
 

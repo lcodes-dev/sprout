@@ -1,11 +1,14 @@
-defmodule <%= app_module %>.Accounts.UserNotifier do
+defmodule <%= @app_module %>.Accounts.UserNotifier do
   @moduledoc """
   Handles user notification emails using HTML templates.
   """
 
   import Swoosh.Email
-  alias <%= app_module %>.Mailer
-  alias <%= web_module %>.Components.Email.EmailComponents
+  alias <%= @app_module %>.Mailer
+  alias <%= @web_module %>.Components.Email.EmailComponents
+
+  # Store app name for use in templates and emails
+  @app_name "<%= @app_module %>"
 
   @doc """
   Deliver instructions to confirm account.
@@ -13,7 +16,7 @@ defmodule <%= app_module %>.Accounts.UserNotifier do
   def deliver_confirmation_instructions(user, url) do
     deliver(user.email, "Confirm your email", fn assigns ->
       ~H"""
-      <EmailComponents.heading>Welcome to <%= app_module %>!</EmailComponents.heading>
+      <EmailComponents.heading>Welcome to {@app_name}!</EmailComponents.heading>
       <EmailComponents.p>
         Hi {@email},
       </EmailComponents.p>
@@ -27,7 +30,7 @@ defmodule <%= app_module %>.Accounts.UserNotifier do
         If you didn't create an account, please ignore this email.
       </EmailComponents.muted>
       """
-    end, %{email: user.email, url: url})
+    end, %{email: user.email, url: url, app_name: @app_name})
   end
 
   @doc """
@@ -92,7 +95,7 @@ defmodule <%= app_module %>.Accounts.UserNotifier do
     email =
       new()
       |> to(recipient)
-      |> from({"<%= app_module %>", "noreply@example.com"})
+      |> from({@app_name, "noreply@example.com"})
       |> subject(subject)
       |> html_body(html_body)
       |> text_body(text_body)

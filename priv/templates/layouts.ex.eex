@@ -253,7 +253,7 @@ defmodule <%= @web_module %>.Layouts do
             <.avatar :if={!@current_user} fallback="U" class="size-8" />
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium truncate">
-                <%= if @current_user, do: @current_user.email, else: "User" %>
+                {if @current_user, do: @current_user.email, else: "User"}
               </p>
               <p class="text-xs text-muted-foreground">Account</p>
             </div>

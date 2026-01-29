@@ -1,8 +1,8 @@
-defmodule <%= web_module %>.UserSettings.UserSettingsController do
-  use <%= web_module %>, :controller
+defmodule <%= @web_module %>.UserSettings.UserSettingsController do
+  use <%= @web_module %>, :controller
 
-  alias <%= app_module %>.Accounts
-  alias <%= web_module %>.UserAuth
+  alias <%= @app_module %>.Accounts
+  alias <%= @web_module %>.UserAuth
 
   def edit(conn, _params) do
     user = conn.assigns.current_scope.user

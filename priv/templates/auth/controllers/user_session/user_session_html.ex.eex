@@ -1,5 +1,5 @@
-defmodule <%= web_module %>.UserSession.UserSessionHTML do
-  use <%= web_module %>, :html
+defmodule <%= @web_module %>.UserSession.UserSessionHTML do
+  use <%= @web_module %>, :html
 
   embed_templates "html/*"
 end

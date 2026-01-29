@@ -1,8 +1,8 @@
-defmodule <%= web_module %>.UserRegistration.UserRegistrationController do
-  use <%= web_module %>, :controller
+defmodule <%= @web_module %>.UserRegistration.UserRegistrationController do
+  use <%= @web_module %>, :controller
 
-  alias <%= app_module %>.Accounts
-  alias <%= app_module %>.Accounts.User
+  alias <%= @app_module %>.Accounts
+  alias <%= @app_module %>.Accounts.User
 
   def new(conn, _params) do
     changeset = Accounts.change_user_registration(%User{})

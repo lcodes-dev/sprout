@@ -1,8 +1,11 @@
-defmodule <%= web_module %>.Components.Email.EmailComponents do
+defmodule <%= @web_module %>.Components.Email.EmailComponents do
   @moduledoc """
   Components for rendering HTML emails.
   """
   use Phoenix.Component
+
+  # Store app name for use in templates
+  @app_name "<%= @app_module %>"
 
   @doc """
   Renders the root email layout with logo and content.
@@ -10,13 +13,15 @@ defmodule <%= web_module %>.Components.Email.EmailComponents do
   attr :inner_content, :any, required: true
 
   def email_root(assigns) do
+    assigns = assign(assigns, :app_name, @app_name)
+
     ~H"""
     <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
     <html xmlns="http://www.w3.org/1999/xhtml">
       <head>
         <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title><%= app_module %></title>
+        <title>{@app_name}</title>
       </head>
       <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 16px; line-height: 1.5; color: #1a1a1a; background-color: #f5f5f5;">
         <table role="presentation" style="width: 100%; border-collapse: collapse;">
@@ -25,7 +30,7 @@ defmodule <%= web_module %>.Components.Email.EmailComponents do
               <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
                 <tr>
                   <td align="center" style="padding: 32px 40px 24px;">
-                    <img src={"data:image/png;base64,#{logo_base64()}"} alt="<%= app_module %>" style="max-width: 120px; height: auto;" />
+                    <img src={"data:image/png;base64,#{logo_base64()}"} alt={@app_name} style="max-width: 120px; height: auto;" />
                   </td>
                 </tr>
                 <tr>
@@ -36,7 +41,7 @@ defmodule <%= web_module %>.Components.Email.EmailComponents do
                 <tr>
                   <td style="padding: 24px 40px; background-color: #f9f9f9; border-top: 1px solid #e5e5e5; border-radius: 0 0 8px 8px;">
                     <p style="margin: 0; font-size: 12px; color: #666666; text-align: center;">
-                      &copy; <%= DateTime.utc_now().year %> <%= app_module %>. All rights reserved.
+                      © {DateTime.utc_now().year} {@app_name}. All rights reserved.
                     </p>
                   </td>
                 </tr>
@@ -112,7 +117,7 @@ defmodule <%= web_module %>.Components.Email.EmailComponents do
   end
 
   # Read and encode the logo at compile time
-  @logo_path Path.join(:code.priv_dir(:<%= app_name %>), "static/images/logo_small.png")
+  @logo_path Path.join(:code.priv_dir(:<%= @app_name %>), "static/images/logo_small.png")
   @external_resource @logo_path
 
   if File.exists?(@logo_path) do

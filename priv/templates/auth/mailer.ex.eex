@@ -1,9 +1,9 @@
-defmodule <%= app_module %>.Mailer do
-  use Swoosh.Mailer, otp_app: :<%= app_name %>
+defmodule <%= @app_module %>.Mailer do
+  use Swoosh.Mailer, otp_app: :<%= @app_name %>
 
   import Phoenix.Component, only: [sigil_H: 2]
 
-  alias <%= web_module %>.Components.Email.EmailComponents
+  alias <%= @web_module %>.Components.Email.EmailComponents
 
   @doc """
   Renders a HEEx template to an HTML string wrapped in the email layout.

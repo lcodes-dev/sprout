@@ -1,4 +1,4 @@
-defmodule <%= app_module %>.Repo.Migrations.CreateUsersAuthTables do
+defmodule <%= @app_module %>.Repo.Migrations.CreateUsersAuthTables do
   use Ecto.Migration
 
   def change do
@@ -47,6 +47,6 @@ defmodule <%= app_module %>.Repo.Migrations.CreateUsersAuthTables do
   end
 
   defp repo_adapter do
-    Application.get_env(:<%= app_name %>, <%= app_module %>.Repo)[:adapter]
+    Application.get_env(:<%= @app_name %>, <%= @app_module %>.Repo)[:adapter]
   end
 end

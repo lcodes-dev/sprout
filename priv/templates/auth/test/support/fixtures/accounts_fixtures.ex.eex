@@ -1,14 +1,14 @@
-defmodule <%= app_module %>.AccountsFixtures do
+defmodule <%= @app_module %>.AccountsFixtures do
   @moduledoc """
   This module defines test helpers for creating
-  entities via the `<%= app_module %>.Accounts` context.
+  entities via the `<%= @app_module %>.Accounts` context.
   """
 
   import Ecto.Query
 
-  alias <%= app_module %>.Accounts
-  alias <%= app_module %>.Accounts.Scope
-  alias <%= app_module %>.Repo
+  alias <%= @app_module %>.Accounts
+  alias <%= @app_module %>.Accounts.Scope
+  alias <%= @app_module %>.Repo
 
   def unique_user_email, do: "user#{System.unique_integer()}@example.com"
   def valid_user_password, do: "Hello123!"
