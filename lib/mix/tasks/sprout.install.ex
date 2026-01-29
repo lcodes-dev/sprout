@@ -69,9 +69,10 @@ defmodule Mix.Tasks.Sprout.Install do
     include_examples? = Keyword.get(options, :examples, false)
     include_auth? = Keyword.get(options, :auth, true)
 
-    web_module = Igniter.Libs.Phoenix.web_module(igniter)
-    app_module = web_module |> Module.split() |> Enum.slice(0..-2//1) |> Module.concat()
-    app_name = app_module |> Module.split() |> List.last() |> Macro.underscore()
+    # Get app name from Mix project config (most reliable source)
+    app_name = Mix.Project.config()[:app] |> to_string()
+    app_module = app_name |> Macro.camelize() |> then(&Module.concat([&1]))
+    web_module = Module.concat([app_module, Web])
     web_path = "lib/#{app_name}_web"
     app_path = "lib/#{app_name}"
 
