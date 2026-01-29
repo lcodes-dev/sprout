@@ -267,7 +267,7 @@ defmodule <%= @web_module %>.Turbo do
       target={@target}
       {@rest}
     >
-      <%= render_slot(@inner_block) %>
+      <%%= render_slot(@inner_block) %>
     </turbo-frame>
     """
   end
@@ -279,7 +279,7 @@ defmodule <%= @web_module %>.Turbo do
 
       <.turbo_stream action="append" target="messages">
         <div id={"message-\#{@message.id}"}>
-          <%= @message.text %>
+          <%%= @message.text %>
         </div>
       </.turbo_stream>
   """
@@ -291,7 +291,7 @@ defmodule <%= @web_module %>.Turbo do
     ~H"""
     <turbo-stream action={@action} target={@target}>
       <template>
-        <%= render_slot(@inner_block) %>
+        <%%= render_slot(@inner_block) %>
       </template>
     </turbo-stream>
     """
