@@ -681,9 +681,17 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp create_email_components(igniter, assigns) do
-    path = "#{assigns[:web_path]}/components/email/email_components.ex"
+    web_path = assigns[:web_path]
+    
+    # Create email components module
+    path = "#{web_path}/components/email/email_components.ex"
     content = render_template("auth/components/email/email_components.ex.eex", assigns)
-    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+    igniter = Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+    
+    # Create email_root layout
+    layout_path = "#{web_path}/components/email/layouts/email_root.html.heex"
+    layout_content = read_template("auth/components/email/layouts/email_root.html.heex")
+    Igniter.create_new_file(igniter, layout_path, layout_content, on_exists: :skip)
   end
 
   defp create_user_auth(igniter, assigns) do

@@ -2,119 +2,125 @@ defmodule <%= @app_module %>.Accounts.UserNotifier do
   @moduledoc """
   Handles user notification emails using HTML templates.
   """
-
-  import Swoosh.Email
-  alias <%= @app_module %>.Mailer
-  alias <%= @web_module %>.Components.Email.EmailComponents
-
-  # Store app name for use in templates and emails
-  @app_name "<%= @app_module %>"
+  use <%= @web_module %>, :html
+  import <%= @web_module %>.Components.Email.EmailComponents
 
   @doc """
   Deliver instructions to confirm account.
   """
   def deliver_confirmation_instructions(user, url) do
-    deliver(user.email, "Confirm your email", fn assigns ->
+    assigns = %{user_email: user.email, url: url}
+
+    html_body =
       ~H"""
-      <EmailComponents.heading>Welcome to {@app_name}!</EmailComponents.heading>
-      <EmailComponents.p>
-        Hi {@email},
-      </EmailComponents.p>
-      <EmailComponents.p>
-        Thanks for signing up! Please confirm your email address by clicking the button below:
-      </EmailComponents.p>
-      <EmailComponents.email_button url={@url}>
-        Confirm my account
-      </EmailComponents.email_button>
-      <EmailComponents.muted>
-        If you didn't create an account, please ignore this email.
-      </EmailComponents.muted>
+      <.email_root title="Confirm your account" logo_base64={logo_base64()}>
+        <.heading>Welcome!</.heading>
+        <.p>Hi {@user_email},</.p>
+        <.p>Welcome! Please confirm your email address by clicking the button below:</.p>
+        <.email_button href={@url}>Confirm my account</.email_button>
+        <.muted>This link will expire in 2 days.</.muted>
+        <.muted>If you didn't create an account with us, please ignore this email.</.muted>
+      </.email_root>
       """
-    end, %{email: user.email, url: url, app_name: @app_name})
+
+    text_body = """
+
+    ==============================
+
+    Hi #{user.email},
+
+    Welcome! Please confirm your email address by visiting the URL below:
+
+    #{url}
+
+    This link will expire in 2 days.
+
+    If you didn't create an account with us, please ignore this email.
+
+    ==============================
+    """
+
+    <%= @app_module %>.Mailer.deliver(user.email, "Confirm your account", text_body, html_body)
   end
 
   @doc """
   Deliver instructions to reset a user password.
   """
   def deliver_reset_password_instructions(user, url) do
-    deliver(user.email, "Reset your password", fn assigns ->
+    assigns = %{user_email: user.email, url: url}
+
+    html_body =
       ~H"""
-      <EmailComponents.heading>Reset your password</EmailComponents.heading>
-      <EmailComponents.p>
-        Hi {@email},
-      </EmailComponents.p>
-      <EmailComponents.p>
-        Someone requested a password reset for your account. If this was you, click the button below:
-      </EmailComponents.p>
-      <EmailComponents.email_button url={@url}>
-        Reset my password
-      </EmailComponents.email_button>
-      <EmailComponents.muted>
-        If you didn't request this change, please ignore this email.
-        This link will expire in 24 hours.
-      </EmailComponents.muted>
+      <.email_root title="Reset your password" logo_base64={logo_base64()}>
+        <.heading>Reset your password</.heading>
+        <.p>Hi {@user_email},</.p>
+        <.p>
+          You requested a password reset for your account. You can reset your password by clicking the button below:
+        </.p>
+        <.email_button href={@url}>Reset my password</.email_button>
+        <.muted>This link will expire in 1 hour.</.muted>
+        <.muted>
+          If you didn't request this change, please ignore this email. Your password will not be changed unless you access the link above.
+        </.muted>
+      </.email_root>
       """
-    end, %{email: user.email, url: url})
+
+    text_body = """
+
+    ==============================
+
+    Hi #{user.email},
+
+    You requested a password reset for your account.
+
+    You can reset your password by visiting the URL below:
+
+    #{url}
+
+    This link will expire in 1 hour.
+
+    If you didn't request this change, please ignore this email.
+    Your password will not be changed unless you access the link above.
+
+    ==============================
+    """
+
+    <%= @app_module %>.Mailer.deliver(user.email, "Reset your password", text_body, html_body)
   end
 
   @doc """
   Deliver instructions to update a user email.
   """
   def deliver_update_email_instructions(user, url) do
-    deliver(user.email, "Confirm your new email", fn assigns ->
+    assigns = %{user_email: user.email, url: url}
+
+    html_body =
       ~H"""
-      <EmailComponents.heading>Confirm your new email</EmailComponents.heading>
-      <EmailComponents.p>
-        Hi {@email},
-      </EmailComponents.p>
-      <EmailComponents.p>
-        You requested to change your email address. Please confirm by clicking the button below:
-      </EmailComponents.p>
-      <EmailComponents.email_button url={@url}>
-        Confirm new email
-      </EmailComponents.email_button>
-      <EmailComponents.muted>
-        If you didn't request this change, please ignore this email.
-      </EmailComponents.muted>
+      <.email_root title="Update email instructions" logo_base64={logo_base64()}>
+        <.heading>Update your email</.heading>
+        <.p>Hi {@user_email},</.p>
+        <.p>You can change your email by clicking the button below:</.p>
+        <.email_button href={@url}>Update my email</.email_button>
+        <.muted>This link will expire in 1 hour.</.muted>
+        <.muted>If you didn't request this change, please ignore this.</.muted>
+      </.email_root>
       """
-    end, %{email: user.email, url: url})
-  end
 
-  # Helper function to deliver emails using the HTML template
-  defp deliver(recipient, subject, template_fn, assigns) do
-    use Phoenix.Component
+    text_body = """
 
-    assigns = Map.put(assigns, :__changed__, %{})
+    ==============================
 
-    html_body = Mailer.body(fn ->
-      template_fn.(assigns)
-    end)
+    Hi #{user.email},
 
-    text_body = html_to_text(html_body)
+    You can change your email by visiting the URL below:
 
-    email =
-      new()
-      |> to(recipient)
-      |> from({@app_name, "noreply@example.com"})
-      |> subject(subject)
-      |> html_body(html_body)
-      |> text_body(text_body)
+    #{url}
 
-    with {:ok, _metadata} <- Mailer.deliver(email) do
-      {:ok, email}
-    end
-  end
+    If you didn't request this change, please ignore this.
 
-  # Convert HTML to plain text for email clients that don't support HTML
-  defp html_to_text(html) do
-    html
-    |> String.replace(~r/<br\s*\/?>/, "\n")
-    |> String.replace(~r/<\/p>/, "\n\n")
-    |> String.replace(~r/<a[^>]*href="([^"]*)"[^>]*>([^<]*)<\/a>/, "\\2: \\1")
-    |> String.replace(~r/<[^>]+>/, "")
-    |> String.replace(~r/&nbsp;/, " ")
-    |> String.replace(~r/&amp;/, "&")
-    |> String.replace(~r/\n{3,}/, "\n\n")
-    |> String.trim()
+    ==============================
+    """
+
+    <%= @app_module %>.Mailer.deliver(user.email, "Update email instructions", text_body, html_body)
   end
 end

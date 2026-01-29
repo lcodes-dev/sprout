@@ -1,20 +1,30 @@
 defmodule <%= @app_module %>.Mailer do
   use Swoosh.Mailer, otp_app: :<%= @app_name %>
 
-  import Phoenix.Component, only: [sigil_H: 2]
+  import Swoosh.Email
+  import <%= @web_module %>.Components.Email.EmailComponents, only: [body: 1]
 
-  alias <%= @web_module %>.Components.Email.EmailComponents
+  @from_name Application.compile_env(:<%= @app_name %>, :mailer_from_name, "<%= @app_module %>")
+  @from_email Application.compile_env(:<%= @app_name %>, :mailer_from_email, "noreply@example.com")
 
   @doc """
-  Renders a HEEx template to an HTML string wrapped in the email layout.
-  """
-  def body(template_fn) when is_function(template_fn, 0) do
-    assigns = %{__changed__: %{}, inner_content: template_fn.()}
+  Delivers an email with both text and HTML bodies.
 
-    ~H"""
-    <EmailComponents.email_root inner_content={@inner_content} />
-    """
-    |> Phoenix.HTML.Safe.to_iodata()
-    |> IO.iodata_to_binary()
+  ## Examples
+
+      Mailer.deliver("user@example.com", "Welcome!", text_body, html_body)
+  """
+  def deliver(recipient, subject, text_body, html_body) do
+    email =
+      new()
+      |> to(recipient)
+      |> from({@from_name, @from_email})
+      |> subject(subject)
+      |> text_body(text_body)
+      |> html_body(body(html_body))
+
+    with {:ok, _metadata} <- deliver(email) do
+      {:ok, email}
+    end
   end
 end

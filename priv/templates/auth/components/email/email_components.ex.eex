@@ -1,129 +1,147 @@
 defmodule <%= @web_module %>.Components.Email.EmailComponents do
   @moduledoc """
-  Components for rendering HTML emails.
+  Provides email layouts and components for use across all contexts.
+
+  This module can be used by any context that needs to send emails,
+  ensuring consistent styling and structure across the application.
+
+  ## Usage in your notifier modules
+
+      defmodule MyApp.MyContext.Notifier do
+        use <%= @web_module %>, :html
+        import <%= @web_module %>.Components.Email.EmailComponents
+
+        # Your email functions here using ~H sigil
+      end
   """
   use Phoenix.Component
 
-  # Store app name for use in templates
-  @app_name "<%= @app_module %>"
+  embed_templates "layouts/*"
+
+  # Load logo at compile time and encode to base64
+  @logo_path Path.join([:code.priv_dir(:<%= @app_name %>), "static", "images", "logo_small.png"])
+  @logo_base64 (if File.exists?(@logo_path) do
+                 @logo_path |> File.read!() |> Base.encode64()
+               else
+                 ""
+               end)
+
+  @app_name Application.compile_env(:<%= @app_name %>, :app_name, "<%= @app_module %>")
 
   @doc """
-  Renders the root email layout with logo and content.
+  Returns the base64-encoded logo for use in email templates.
   """
-  attr :inner_content, :any, required: true
+  def logo_base64, do: @logo_base64
 
-  def email_root(assigns) do
-    assigns = assign(assigns, :app_name, @app_name)
+  @doc """
+  Returns the app name for use in email templates.
+  """
+  def app_name, do: @app_name
 
-    ~H"""
-    <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-    <html xmlns="http://www.w3.org/1999/xhtml">
-      <head>
-        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>{@app_name}</title>
-      </head>
-      <body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; font-size: 16px; line-height: 1.5; color: #1a1a1a; background-color: #f5f5f5;">
-        <table role="presentation" style="width: 100%; border-collapse: collapse;">
-          <tr>
-            <td align="center" style="padding: 40px 20px;">
-              <table role="presentation" style="max-width: 600px; width: 100%; border-collapse: collapse; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);">
-                <tr>
-                  <td align="center" style="padding: 32px 40px 24px;">
-                    <img src={"data:image/png;base64,#{logo_base64()}"} alt={@app_name} style="max-width: 120px; height: auto;" />
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 0 40px 32px;">
-                    {@inner_content}
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 24px 40px; background-color: #f9f9f9; border-top: 1px solid #e5e5e5; border-radius: 0 0 8px 8px;">
-                    <p style="margin: 0; font-size: 12px; color: #666666; text-align: center;">
-                      © {DateTime.utc_now().year} {@app_name}. All rights reserved.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-        </table>
-      </body>
-    </html>
-    """
+  @doc """
+  Converts a HEEx body to a binary string.
+  """
+  def body(heex_body) do
+    heex_body
+    |> Phoenix.HTML.Safe.to_iodata()
+    |> IO.iodata_to_binary()
   end
 
   @doc """
-  Renders a heading in the email.
+  Renders a button component for emails.
+
+  ## Examples
+
+      <.email_button href={@url}>
+        Click here
+      </.email_button>
   """
-  slot :inner_block, required: true
-
-  def heading(assigns) do
-    ~H"""
-    <h1 style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #1a1a1a; text-align: center;">
-      {render_slot(@inner_block)}
-    </h1>
-    """
-  end
-
-  @doc """
-  Renders a paragraph in the email.
-  """
-  slot :inner_block, required: true
-
-  def p(assigns) do
-    ~H"""
-    <p style="margin: 0 0 16px; font-size: 16px; color: #333333;">
-      {render_slot(@inner_block)}
-    </p>
-    """
-  end
-
-  @doc """
-  Renders muted/secondary text in the email.
-  """
-  slot :inner_block, required: true
-
-  def muted(assigns) do
-    ~H"""
-    <p style="margin: 16px 0 0; font-size: 14px; color: #666666;">
-      {render_slot(@inner_block)}
-    </p>
-    """
-  end
-
-  @doc """
-  Renders a call-to-action button in the email.
-  """
-  attr :url, :string, required: true
+  attr :href, :string, required: true
   slot :inner_block, required: true
 
   def email_button(assigns) do
     ~H"""
-    <table role="presentation" style="width: 100%; border-collapse: collapse; margin: 24px 0;">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin: 0 0 24px;">
       <tr>
-        <td align="center">
+        <td style="border-radius: 6px; background-color: #000000;">
           <a
-            href={@url}
-            style="display: inline-block; padding: 12px 32px; background-color: #18181b; color: #ffffff; text-decoration: none; font-weight: 500; border-radius: 6px; font-size: 16px;"
+            href={@href}
+            style="display: inline-block; padding: 14px 32px; font-size: 16px; font-weight: 600; color: #ffffff; text-decoration: none;"
           >
             {render_slot(@inner_block)}
           </a>
         </td>
       </tr>
     </table>
+    <table
+      role="presentation"
+      cellspacing="0"
+      cellpadding="0"
+      border="0"
+      style="width: 100%; margin: 0 0 24px;"
+    >
+      <tr>
+        <td style="border-left: 4px solid #e5e5e5; padding: 16px;">
+          <p style="margin: 0; font-size: 14px; color: #666666; font-style: italic;">
+            If the button is not working, copy and paste this URL in your browser:
+          </p>
+          <p style="margin: 4px 0 0; font-size: 14px; color: #666666; font-style: italic; text-decoration: underline; word-break: break-all;">
+            {@href}
+          </p>
+        </td>
+      </tr>
+    </table>
     """
   end
 
-  # Read and encode the logo at compile time
-  @logo_path Path.join(:code.priv_dir(:<%= @app_name %>), "static/images/logo_small.png")
-  @external_resource @logo_path
+  @doc """
+  Renders a heading for emails.
 
-  if File.exists?(@logo_path) do
-    @logo_base64 Base.encode64(File.read!(@logo_path))
-    defp logo_base64, do: @logo_base64
-  else
-    defp logo_base64, do: ""
+  ## Examples
+
+      <.heading>Welcome!</.heading>
+  """
+  slot :inner_block, required: true
+
+  def heading(assigns) do
+    ~H"""
+    <h1 style="margin: 0 0 24px; font-size: 24px; font-weight: 600; color: #000000;">
+      {render_slot(@inner_block)}
+    </h1>
+    """
+  end
+
+  @doc """
+  Renders a paragraph for emails.
+
+  ## Examples
+
+      <.p>Your email content here.</.p>
+  """
+  slot :inner_block, required: true
+
+  def p(assigns) do
+    ~H"""
+    <p style="margin: 0 0 16px;">
+      {render_slot(@inner_block)}
+    </p>
+    """
+  end
+
+  @doc """
+  Renders a muted/secondary text paragraph for emails.
+
+  ## Examples
+
+      <.muted>This link will expire in 7 days.</.muted>
+  """
+  slot :inner_block, required: true
+
+  def muted(assigns) do
+    ~H"""
+    <p style="margin: 0 0 16px; font-size: 14px; color: #666666;">
+      {render_slot(@inner_block)}
+    </p>
+    """
   end
 end
