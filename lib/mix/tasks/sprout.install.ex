@@ -682,12 +682,12 @@ defmodule Mix.Tasks.Sprout.Install do
 
   defp create_email_components(igniter, assigns) do
     web_path = assigns[:web_path]
-    
+
     # Create email components module
     path = "#{web_path}/components/email/email_components.ex"
     content = render_template("auth/components/email/email_components.ex.eex", assigns)
     igniter = Igniter.create_new_file(igniter, path, content, on_exists: :skip)
-    
+
     # Create email_root layout
     layout_path = "#{web_path}/components/email/layouts/email_root.html.heex"
     layout_content = read_template("auth/components/email/layouts/email_root.html.heex")
@@ -791,14 +791,6 @@ defmodule Mix.Tasks.Sprout.Install do
         # Add import and plugs
         auth_code = """
         import #{inspect(web_module)}.UserAuth
-
-        pipeline :require_authenticated_user do
-          plug :require_authenticated_user
-        end
-
-        pipeline :redirect_if_authenticated do
-          plug :redirect_if_user_is_authenticated
-        end
         """
 
         routes_code = """
@@ -813,7 +805,7 @@ defmodule Mix.Tasks.Sprout.Install do
 
         # Routes for non-authenticated users
         scope "/", #{inspect(web_module)} do
-          pipe_through [:browser, :redirect_if_authenticated]
+          pipe_through [:browser, :redirect_if_user_is_authenticated]
 
           get "/users/register", UserRegistration.UserRegistrationController, :new
           post "/users/register", UserRegistration.UserRegistrationController, :create
