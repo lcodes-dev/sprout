@@ -5,16 +5,18 @@ defmodule <%= @web_module %>.UserSessionController do
   alias <%= @web_module %>.UserAuth
 
   def new(conn, _params) do
+    current_scope = conn.assigns[:current_scope]
+
     email =
-      if conn.assigns.current_scope do
-        conn.assigns.current_scope.user.email
+      if current_scope do
+        current_scope.user.email
       else
         ""
       end
 
     form = Phoenix.Component.to_form(%{"email" => email}, as: "user")
 
-    render(conn, :new, form: form)
+    render(conn, :new, form: form, current_scope: current_scope)
   end
 
   def create(conn, %{"user" => user_params}) do
@@ -41,7 +43,7 @@ defmodule <%= @web_module %>.UserSessionController do
             as: "user"
           )
 
-        render(conn, :new, form: form)
+        render(conn, :new, form: form, current_scope: conn.assigns[:current_scope])
     end
   end
 
