@@ -10,7 +10,7 @@ defmodule <%= @web_module %>.UserConfirmationController do
         |> put_flash(:info, "Email confirmed successfully. You can now sign in.")
         |> redirect(to: ~p"/users/log-in")
 
-      :error ->
+      {:error, _reason} ->
         conn
         |> put_flash(:error, "Confirmation link is invalid or it has expired.")
         |> redirect(to: ~p"/users/log-in")
