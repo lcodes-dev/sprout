@@ -43,19 +43,15 @@ defmodule <%= @web_module %>.Layouts do
                 <span class="text-lg font-semibold">Phoenix</span>
               </a>
               <div class="hidden md:flex items-center gap-6">
-                <a href="/features" class="text-sm text-muted-foreground hover:text-foreground">
-                  Features
+                <a href="/" class="text-sm text-muted-foreground hover:text-foreground">
+                  Home
                 </a>
-                <a href="/pricing" class="text-sm text-muted-foreground hover:text-foreground">
-                  Pricing
-                </a>
-                <a href="/docs" class="text-sm text-muted-foreground hover:text-foreground">Docs</a>
               </div>
             </div>
             <div class="flex items-center gap-4">
               <.theme_toggle />
-              <a href="/login" class="btn-ghost btn-sm hidden sm:inline-flex">Sign in</a>
-              <a href="/signup" class="btn btn-sm">Get Started</a>
+              <a href="/users/log-in" class="btn-ghost btn-sm hidden sm:inline-flex">Sign in</a>
+              <a href="/users/register" class="btn btn-sm">Get Started</a>
             </div>
           </div>
         </nav>
@@ -73,38 +69,31 @@ defmodule <%= @web_module %>.Layouts do
             <div>
               <h3 class="text-sm font-semibold mb-4">Product</h3>
               <ul class="space-y-2 text-sm text-muted-foreground">
-                <li><a href="/features" class="hover:text-foreground">Features</a></li>
-                <li><a href="/pricing" class="hover:text-foreground">Pricing</a></li>
-                <li><a href="/changelog" class="hover:text-foreground">Changelog</a></li>
+                <li><a href="#" class="hover:text-foreground">Example link 1</a></li>
               </ul>
             </div>
             <div>
               <h3 class="text-sm font-semibold mb-4">Company</h3>
               <ul class="space-y-2 text-sm text-muted-foreground">
-                <li><a href="/about" class="hover:text-foreground">About</a></li>
-                <li><a href="/blog" class="hover:text-foreground">Blog</a></li>
-                <li><a href="/contact" class="hover:text-foreground">Contact</a></li>
+                <li><a href="#" class="hover:text-foreground">Example link 2</a></li>
               </ul>
             </div>
             <div>
               <h3 class="text-sm font-semibold mb-4">Resources</h3>
               <ul class="space-y-2 text-sm text-muted-foreground">
-                <li><a href="/docs" class="hover:text-foreground">Documentation</a></li>
-                <li><a href="/support" class="hover:text-foreground">Support</a></li>
-                <li><a href="/api" class="hover:text-foreground">API Reference</a></li>
+                <li><a href="#" class="hover:text-foreground">Example link 3</a></li>
               </ul>
             </div>
             <div>
               <h3 class="text-sm font-semibold mb-4">Legal</h3>
               <ul class="space-y-2 text-sm text-muted-foreground">
-                <li><a href="/privacy" class="hover:text-foreground">Privacy</a></li>
-                <li><a href="/terms" class="hover:text-foreground">Terms</a></li>
+                <li><a href="#" class="hover:text-foreground">Example link 4</a></li>
               </ul>
             </div>
           </div>
           <div class="mt-8 border-t border-border pt-8">
             <p class="text-sm text-muted-foreground text-center">
-              &copy; 2026 Phoenix Framework. All rights reserved.
+              &copy; <%= DateTime.utc_now().year %> All rights reserved.
             </p>
           </div>
         </div>
@@ -220,25 +209,11 @@ defmodule <%= @web_module %>.Layouts do
               <span>Dashboard</span>
             </a>
             <a
-              href="/projects"
-              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
-            >
-              <.icon name="hero-folder" class="size-5" />
-              <span>Projects</span>
-            </a>
-            <a
-              href="/team"
-              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
-            >
-              <.icon name="hero-user-group" class="size-5" />
-              <span>Team</span>
-            </a>
-            <a
-              href="/settings"
+              href="/users/settings"
               class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
             >
               <.icon name="hero-cog-6-tooth" class="size-5" />
-              <span>Settings</span>
+              <span>Profile settings</span>
             </a>
           </div>
         </nav>
@@ -269,7 +244,7 @@ defmodule <%= @web_module %>.Layouts do
           </button>
           <div class="flex items-center gap-4">
             <.theme_toggle />
-            <a href="/logout" class="btn-ghost btn-sm">Sign out</a>
+            <a href="/users/log-out" class="btn-ghost btn-sm">Sign out</a>
           </div>
         </header>
         <%%!-- Main Content - scrollable --%>
