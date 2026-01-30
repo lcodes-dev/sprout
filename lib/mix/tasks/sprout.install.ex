@@ -85,6 +85,7 @@ defmodule Mix.Tasks.Sprout.Install do
     ]
 
     igniter
+    |> configure_igniter_dont_move_controllers(assigns)
     |> Igniter.add_notice("""
     Sprout Installation
     ===================
@@ -138,8 +139,23 @@ defmodule Mix.Tasks.Sprout.Install do
     #{if include_auth?, do: "3. Restart your Phoenix server", else: "2. Restart your Phoenix server"}
     #{if include_examples?, do: "#{if include_auth?, do: "4", else: "3"}. Visit /turbo-example to see Turbo in action", else: ""}
 
+    Optional cleanup:
+    - Remove empty folder: rm -rf lib/*_web/controllers/page_html
+
     Documentation: https://github.com/yourusername/sprout
     """)
+  end
+
+  # ============================================================================
+  # Configure Igniter to not relocate controller files
+  # ============================================================================
+
+  defp configure_igniter_dont_move_controllers(igniter, assigns) do
+    web_path = assigns[:web_path]
+    # Add pattern to prevent Igniter from relocating files in controllers folder
+    pattern = ~r"#{Regex.escape(web_path)}/controllers/"
+
+    Igniter.Project.IgniterConfig.dont_move_file_pattern(igniter, pattern)
   end
 
   # ============================================================================

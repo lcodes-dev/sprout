@@ -16,9 +16,6 @@ defmodule <%= @web_module %>.UserAuth do
   @remember_me_cookie "_<%= @app_name %>_user_remember_me"
   @remember_me_options [sign: true, max_age: @max_age, same_site: "Lax"]
 
-  # Session validity without remember me (1 day)
-  @session_max_age 60 * 60 * 24
-
   @doc """
   Logs the user in.
 

@@ -194,34 +194,33 @@ defmodule <%= @app_module %>.Accounts do
       %Ecto.Changeset{data: %User{}}
 
   """
-  def change_user_password(user, attrs \\ %{}) do
-    User.password_changeset(user, attrs, hash_password: false)
+  def change_user_password(user, attrs \\ %{}, opts \\ []) do
+    User.password_changeset(user, attrs, opts)
   end
 
   @doc """
   Updates the user password.
 
+  Returns a tuple with the updated user, as well as a list of expired tokens.
+
   ## Examples
 
-      iex> update_user_password(user, "valid password", %{password: ...})
-      {:ok, %User{}}
+      iex> update_user_password(user, %{password: ...})
+      {:ok, {%User{}, [...]}}
 
-      iex> update_user_password(user, "invalid password", %{password: ...})
+      iex> update_user_password(user, %{password: "too short"})
       {:error, %Ecto.Changeset{}}
 
   """
-  def update_user_password(user, password, attrs) do
-    changeset =
-      user
-      |> User.password_changeset(attrs)
-      |> User.validate_current_password(password)
+  def update_user_password(user, attrs) do
+    changeset = User.password_changeset(user, attrs)
 
     Ecto.Multi.new()
     |> Ecto.Multi.update(:user, changeset)
     |> Ecto.Multi.delete_all(:tokens, UserToken.by_user_and_contexts_query(user, :all))
     |> Repo.transaction()
     |> case do
-      {:ok, %{user: user}} -> {:ok, user}
+      {:ok, %{user: user, tokens: tokens}} -> {:ok, {user, tokens}}
       {:error, :user, changeset, _} -> {:error, changeset}
     end
   end
