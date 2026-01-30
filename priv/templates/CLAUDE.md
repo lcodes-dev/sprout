@@ -14,12 +14,41 @@ This is a **Phoenix deadview application** using:
 
 ## Critical Rules
 
-### Architecture
+### Controller Naming
 
-1. **Use Controllers, Not LiveView**: This project uses controllers with Turbo for interactivity
-2. **Wrap Templates in Layouts**: Always use `<Layouts.app>`, `<Layouts.simple>`, or `<Layouts.dashboard>`
-3. **Turbo Streams for Updates**: Use `stream/4` and `send_turbo_stream/1` for partial page updates
-4. **Alpine.js for Client State**: Use Alpine for dropdowns, modals, tabs, loading states
+Use **flat module names** (no nested modules):
+
+```elixir
+# CORRECT
+defmodule MyAppWeb.PostController do
+  use MyAppWeb, :controller
+end
+
+defmodule MyAppWeb.PostHTML do
+  use MyAppWeb, :html
+  embed_templates "html/*"
+end
+
+# WRONG - do not nest modules
+defmodule MyAppWeb.Post.PostController do  # ❌
+```
+
+### Action Naming (Rails Convention)
+
+Use standard RESTful names: `index`, `new`, `create`, `show`, `edit`, `update`, `destroy`
+
+### Template Partials
+
+Extract forms as partials for Turbo Stream updates. **Use descriptive names** to avoid conflicts:
+
+```
+# CORRECT
+post_form.html.heex
+registration_form.html.heex
+
+# WRONG - conflicts with Phoenix.Component.form
+form.html.heex  # ❌
+```
 
 ### Templates (HEEx)
 
@@ -49,13 +78,14 @@ def create(conn, %{"post" => params}) do
     {:ok, post} ->
       conn
       |> put_flash(:info, "Created!")
-      |> stream(:prepend, "posts", PostHTML.post(%{post: post}))
+      |> stream(:prepend, "posts-list", PostHTML.post_card(%{post: post}))
+      |> stream(:replace, "post-form", PostHTML.post_form(%{form: to_form(Blog.change_post(%Post{}))}))
       |> send_turbo_stream()
 
     {:error, changeset} ->
       conn
       |> put_status(:unprocessable_entity)
-      |> stream(:replace, "form", PostHTML.form(%{changeset: changeset}))
+      |> stream(:replace, "post-form", PostHTML.post_form(%{form: to_form(changeset)}))
       |> send_turbo_stream()
   end
 end
@@ -91,17 +121,23 @@ defmodule MyAppWeb.PostLive do
   use MyAppWeb, :live_view  # WRONG for this project
 end
 
+# Don't nest module names
+defmodule MyAppWeb.Post.PostController do  # WRONG
+
 # Don't access changesets directly in templates
 <.form for={@changeset}>  # WRONG
 
 # Don't use phx-* bindings (those are for LiveView)
 <button phx-click="save">  # WRONG
+
+# Don't name partials "form" (conflicts with Phoenix.Component)
+html/form.html.heex  # WRONG
 ```
 
 ### ✅ Do This Instead
 
 ```elixir
-# Use controllers
+# Use controllers with flat names
 defmodule MyAppWeb.PostController do
   use MyAppWeb, :controller
 end
@@ -111,6 +147,9 @@ end
 
 # Use Turbo data attributes
 <a data-turbo-method="delete" data-turbo-confirm="Sure?">  # CORRECT
+
+# Name partials descriptively
+html/post_form.html.heex  # CORRECT
 ```
 
 ## Quick Reference
@@ -179,13 +218,15 @@ lib/<%= @app_name %>_web/
 │   ├── turbo_socket.ex           # WebSocket for Turbo Streams
 │   └── turbo_stream_channel.ex   # Channel handlers
 ├── controllers/
-│   └── post/
-│       ├── post_controller.ex    # Controller
-│       ├── post_html.ex          # HTML module with components
+│   └── post/                     # Directory per resource
+│       ├── post_controller.ex    # Module: AppWeb.PostController (flat name)
+│       ├── post_html.ex          # Module: AppWeb.PostHTML
 │       └── html/
-│           ├── index.html.heex
-│           ├── show.html.heex
-│           └── form.html.heex
+│           ├── index.html.heex   # List view
+│           ├── new.html.heex     # New form page (calls partial)
+│           ├── edit.html.heex    # Edit form page (calls partial)
+│           ├── show.html.heex    # Detail view
+│           └── post_form.html.heex  # Form partial for Turbo Stream updates
 ├── components/
 │   ├── core_components.ex        # BasecoatUI components
 │   ├── layouts.ex                # Layout components
@@ -196,7 +237,9 @@ lib/<%= @app_name %>_web/
 ## When in Doubt
 
 1. **Check AGENTS.md** for detailed guidelines
-2. **Use Turbo Streams** for server-driven updates, **Alpine.js** for client-side UI state
-3. **Test with Turbo headers**: `put_req_header("accept", "text/vnd.turbo-stream.html")`
-4. **Every streamable element needs a unique DOM ID**
-5. **Use `422` status for validation errors** in Turbo Stream responses
+2. **Use flat module names**: `AppWeb.PostController` not `AppWeb.Post.PostController`
+3. **Use Rails action names**: `index`, `new`, `create`, `show`, `edit`, `update`, `destroy`
+4. **Name partials descriptively**: `post_form.html.heex` not `form.html.heex`
+5. **Every form needs a unique ID** for Turbo Stream targeting
+6. **Use `422` status for validation errors** in Turbo Stream responses
+7. **Test with Turbo headers**: `put_req_header("accept", "text/vnd.turbo-stream.html")`

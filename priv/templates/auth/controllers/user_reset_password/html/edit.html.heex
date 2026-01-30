@@ -1,0 +1,16 @@
+<Layouts.simple flash={@flash} current_scope={@current_scope}>
+  <div class="text-center mb-6">
+    <h2 class="text-2xl font-bold mb-2">Reset your password</h2>
+    <p class="text-sm text-muted-foreground">
+      Enter your new password below.
+    </p>
+  </div>
+
+  <.reset_password_form form={@form} token={@token} />
+
+  <p class="text-center text-sm mt-4">
+    <.link navigate={~p"/users/log-in"} class="font-semibold text-primary hover:underline">
+      Back to log in
+    </.link>
+  </p>
+</Layouts.simple>

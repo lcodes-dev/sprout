@@ -1,0 +1,30 @@
+<.form for={@form} id="registration-form" action={~p"/users/register"} class="space-y-4">
+  <.input
+    field={@form[:email]}
+    type="email"
+    label="Email"
+    autocomplete="username"
+    required
+    phx-mounted={JS.focus()}
+  />
+
+  <.input
+    field={@form[:password]}
+    type="password"
+    label="Password"
+    autocomplete="new-password"
+    required
+  />
+
+  <.input
+    field={@form[:password_confirmation]}
+    type="password"
+    label="Confirm Password"
+    autocomplete="new-password"
+    required
+  />
+
+  <.button type="submit" variant="default" class="w-full">
+    Create account
+  </.button>
+</.form>

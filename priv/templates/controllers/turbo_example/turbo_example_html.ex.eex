@@ -1,4 +1,4 @@
-defmodule <%= @web_module %>.TurboExample.TurboExampleHTML do
+defmodule <%= @web_module %>.TurboExampleHTML do
   @moduledoc """
   HTML module for Turbo Example views.
 

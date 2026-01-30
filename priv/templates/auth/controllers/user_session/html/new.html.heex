@@ -1,51 +1,21 @@
 <Layouts.simple flash={@flash} current_scope={@current_scope}>
-  <div class="mx-auto max-w-md">
-    <.card>
-      <:header title="Sign in to your account" />
-      <:content>
-        <.form :let={f} for={%{}} as={:user} action={~p"/users/log-in"} class="space-y-4">
-          <.error :if={@error_message}>{@error_message}</.error>
-
-          <.input
-            field={f[:email]}
-            type="email"
-            label="Email"
-            autocomplete="email"
-            required
-          />
-          <.input
-            field={f[:password]}
-            type="password"
-            label="Password"
-            autocomplete="current-password"
-            required
-          />
-
-          <div class="flex items-center justify-between">
-            <label class="flex items-center gap-2 text-sm">
-              <input type="checkbox" name="user[remember_me]" value="true" class="checkbox" />
-              <span>Remember me</span>
-            </label>
-            <.link
-              navigate={~p"/users/forgot-password"}
-              class="text-sm font-medium text-primary underline-offset-4 hover:underline"
-            >
-              Forgot password?
-            </.link>
-          </div>
-
-          <.button type="submit" class="w-full">
-            Sign in
-          </.button>
-        </.form>
-      </:content>
-    </.card>
-
-    <p class="mt-6 text-center text-sm text-muted-foreground">
-      Don't have an account?
-      <.link navigate={~p"/users/register"} class="font-medium text-primary underline-offset-4 hover:underline">
-        Sign up
-      </.link>
+  <div class="text-center mb-6">
+    <h2 class="text-2xl font-bold mb-2">Log in to your account</h2>
+    <p class="text-sm text-muted-foreground">
+      <%= if @current_scope do %>
+        You need to reauthenticate to perform sensitive actions on your account.
+      <% else %>
+        Don't have an account?
+        <.link
+          navigate={~p"/users/register"}
+          class="font-semibold text-primary hover:underline"
+        >
+          Sign up
+        </.link>
+        for an account now.
+      <% end %>
     </p>
   </div>
+
+  <.session_form form={@form} readonly={!!@current_scope} />
 </Layouts.simple>

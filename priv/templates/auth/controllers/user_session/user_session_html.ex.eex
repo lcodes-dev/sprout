@@ -1,4 +1,4 @@
-defmodule <%= @web_module %>.UserSession.UserSessionHTML do
+defmodule <%= @web_module %>.UserSessionHTML do
   use <%= @web_module %>, :html
 
   embed_templates "html/*"

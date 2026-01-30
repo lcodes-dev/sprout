@@ -1,4 +1,4 @@
-defmodule <%= @web_module %>.TurboExample.TurboExampleController do
+defmodule <%= @web_module %>.TurboExampleController do
   @moduledoc """
   Example controller demonstrating Hotwire Turbo features:
 
@@ -10,7 +10,7 @@ defmodule <%= @web_module %>.TurboExample.TurboExampleController do
 
   use <%= @web_module %>, :controller
 
-  alias <%= @web_module %>.TurboExample.TurboExampleHTML
+  alias <%= @web_module %>.TurboExampleHTML
 
   # In-memory store for demo (in real app, use database)
   @messages_agent :turbo_example_messages

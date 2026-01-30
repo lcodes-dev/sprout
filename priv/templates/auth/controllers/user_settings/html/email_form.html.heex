@@ -1,0 +1,12 @@
+<.card id="email-settings">
+  <:header title="Change Email" />
+  <:content>
+    <.form :let={f} for={@email_changeset} action={~p"/users/settings"} id="email-form" class="space-y-4">
+      <input type="hidden" name="action" value="update_email" />
+
+      <.input field={f[:email]} type="email" label="Email" autocomplete="email" required />
+
+      <.button type="submit">Change Email</.button>
+    </.form>
+  </:content>
+</.card>

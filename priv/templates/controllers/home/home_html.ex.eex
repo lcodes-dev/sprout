@@ -1,4 +1,4 @@
-defmodule <%= @web_module %>.Home.HomeHTML do
+defmodule <%= @web_module %>.HomeHTML do
   @moduledoc """
   This module contains pages rendered by HomeController.
 

@@ -1,33 +1,51 @@
-defmodule <%= @web_module %>.UserSession.UserSessionController do
+defmodule <%= @web_module %>.UserSessionController do
   use <%= @web_module %>, :controller
 
   alias <%= @app_module %>.Accounts
   alias <%= @web_module %>.UserAuth
 
   def new(conn, _params) do
-    render(conn, :new, error_message: nil)
+    email =
+      if conn.assigns.current_scope do
+        conn.assigns.current_scope.user.email
+      else
+        ""
+      end
+
+    form = Phoenix.Component.to_form(%{"email" => email}, as: "user")
+
+    render(conn, :new, form: form)
   end
 
   def create(conn, %{"user" => user_params}) do
     %{"email" => email, "password" => password} = user_params
 
-    if user = Accounts.get_user_by_email_and_password(email, password) do
-      if user.confirmed_at do
+    case Accounts.get_user_by_email_and_password(email, password) do
+      %Accounts.User{} = user ->
         conn
-        |> put_flash(:info, "Welcome back!")
         |> UserAuth.log_in_user(user, user_params)
-      else
+
+      :unconfirmed ->
         conn
-        |> put_flash(:error, "Please confirm your email before signing in.")
+        |> put_flash(
+          :error,
+          "You must confirm your email address before logging in. Please check your email for the confirmation link."
+        )
+        |> put_flash(:email, String.slice(email, 0, 160))
         |> redirect(to: ~p"/users/log-in")
-      end
-    else
-      # In order to prevent user enumeration attacks, don't disclose whether the email is registered.
-      render(conn, :new, error_message: "Invalid email or password")
+
+      nil ->
+        form =
+          Phoenix.Component.to_form(%{"email" => email, "password" => ""},
+            errors: [password: {"Invalid email or password", []}],
+            as: "user"
+          )
+
+        render(conn, :new, form: form)
     end
   end
 
-  def delete(conn, _params) do
+  def destroy(conn, _params) do
     conn
     |> put_flash(:info, "Logged out successfully.")
     |> UserAuth.log_out_user()

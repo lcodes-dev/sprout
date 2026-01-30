@@ -1,4 +1,4 @@
-defmodule <%= @web_module %>.UserSettings.UserSettingsHTML do
+defmodule <%= @web_module %>.UserSettingsHTML do
   use <%= @web_module %>, :html
 
   embed_templates "html/*"

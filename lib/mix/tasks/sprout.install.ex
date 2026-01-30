@@ -474,11 +474,11 @@ defmodule Mix.Tasks.Sprout.Install do
       node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
       cond do
-        String.contains?(node_string, "Home.HomeController") ->
+        String.contains?(node_string, "HomeController") ->
           {:ok, zipper}
 
         String.contains?(node_string, "PageController, :home") ->
-          updated_string = String.replace(node_string, "PageController, :home", "Home.HomeController, :index")
+          updated_string = String.replace(node_string, "PageController, :home", "HomeController, :index")
           {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
 
         true ->
@@ -579,27 +579,34 @@ defmodule Mix.Tasks.Sprout.Install do
     web_module = assigns[:web_module]
 
     route_content = """
-    scope "/turbo-example", #{web_module}.TurboExample do
-      pipe_through :browser
-
-      get "/", TurboExampleController, :index
-      get "/drive-demo", TurboExampleController, :drive_demo
-      get "/frame-content", TurboExampleController, :frame_content
-      post "/increment", TurboExampleController, :increment_counter
-      post "/messages", TurboExampleController, :create_message
-      delete "/messages/:id", TurboExampleController, :delete_message
-      delete "/clear", TurboExampleController, :clear_messages
-      post "/broadcast", TurboExampleController, :broadcast_message
-      post "/server-event", TurboExampleController, :simulate_server_event
-    end
+    # Turbo Example Routes
+    get "/turbo-example", TurboExampleController, :index
+    get "/turbo-example/drive-demo", TurboExampleController, :drive_demo
+    get "/turbo-example/frame-content", TurboExampleController, :frame_content
+    post "/turbo-example/increment", TurboExampleController, :increment_counter
+    post "/turbo-example/messages", TurboExampleController, :create_message
+    delete "/turbo-example/messages/:id", TurboExampleController, :delete_message
+    delete "/turbo-example/clear", TurboExampleController, :clear_messages
+    post "/turbo-example/broadcast", TurboExampleController, :broadcast_message
+    post "/turbo-example/server-event", TurboExampleController, :simulate_server_event
     """
 
-    Igniter.Libs.Phoenix.add_scope(
-      igniter,
-      "/turbo-example",
-      route_content,
-      arg2: Module.concat([web_module, "TurboExample"])
-    )
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
+      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+
+      if String.contains?(node_string, "TurboExampleController") do
+        {:ok, zipper}
+      else
+        # Find the first scope "/" block and add routes there
+        updated_string = String.replace(
+          node_string,
+          ~r/(get "\/", HomeController, :index)/,
+          "\\1\n\n    #{String.trim(route_content)}"
+        )
+        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+      end
+    end)
   end
 
   defp create_hotwire_guide(igniter, assigns) do
@@ -703,12 +710,12 @@ defmodule Mix.Tasks.Sprout.Install do
     web_path = assigns[:web_path]
 
     controllers = [
-      {"user_registration", ["new.html.heex"]},
-      {"user_session", ["new.html.heex"]},
-      {"user_forgot_password", ["index.html.heex"]},
-      {"user_reset_password", ["show.html.heex"]},
+      {"user_registration", ["new.html.heex", "registration_form.html.heex"]},
+      {"user_session", ["new.html.heex", "session_form.html.heex"]},
+      {"user_forgot_password", ["new.html.heex", "forgot_password_form.html.heex"]},
+      {"user_reset_password", ["edit.html.heex", "reset_password_form.html.heex"]},
       {"user_confirmation", []},
-      {"user_settings", ["edit.html.heex"]}
+      {"user_settings", ["edit.html.heex", "email_form.html.heex", "password_form.html.heex"]}
     ]
 
     Enum.reduce(controllers, igniter, fn {controller_name, templates}, acc ->
@@ -797,32 +804,32 @@ defmodule Mix.Tasks.Sprout.Install do
         scope "/", #{web_module} do
           pipe_through [:browser]
 
-          get "/users/log-in", UserSession.UserSessionController, :new
-          post "/users/log-in", UserSession.UserSessionController, :create
-          delete "/users/log-out", UserSession.UserSessionController, :delete
+          get "/users/log-in", UserSessionController, :new
+          post "/users/log-in", UserSessionController, :create
+          delete "/users/log-out", UserSessionController, :destroy
         end
 
         # Routes for non-authenticated users
         scope "/", #{web_module} do
           pipe_through [:browser, :redirect_if_user_is_authenticated]
 
-          get "/users/register", UserRegistration.UserRegistrationController, :new
-          post "/users/register", UserRegistration.UserRegistrationController, :create
-          get "/users/forgot-password", UserForgotPassword.UserForgotPasswordController, :index
-          post "/users/forgot-password", UserForgotPassword.UserForgotPasswordController, :create
-          get "/users/reset-password/:token", UserResetPassword.UserResetPasswordController, :show
-          put "/users/reset-password/:token", UserResetPassword.UserResetPasswordController, :update
-          get "/users/confirm/:token", UserConfirmation.UserConfirmationController, :confirm
+          get "/users/register", UserRegistrationController, :new
+          post "/users/register", UserRegistrationController, :create
+          get "/users/forgot-password", UserForgotPasswordController, :new
+          post "/users/forgot-password", UserForgotPasswordController, :create
+          get "/users/reset-password/:token", UserResetPasswordController, :edit
+          put "/users/reset-password/:token", UserResetPasswordController, :update
+          get "/users/confirm/:token", UserConfirmationController, :confirm
         end
 
         # Routes for authenticated users
         scope "/", #{web_module} do
           pipe_through [:browser, :require_authenticated_user]
 
-          get "/dashboard", Dashboard.DashboardController, :index
-          get "/users/settings", UserSettings.UserSettingsController, :edit
-          put "/users/settings", UserSettings.UserSettingsController, :update
-          get "/users/settings/confirm-email/:token", UserSettings.UserSettingsController, :confirm_email
+          get "/dashboard", DashboardController, :index
+          get "/users/settings", UserSettingsController, :edit
+          put "/users/settings", UserSettingsController, :update
+          get "/users/settings/confirm-email/:token", UserSettingsController, :confirm_email
         end
         """
 
@@ -863,7 +870,7 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp maybe_add_auth_routes(string, routes_code) do
-    if String.contains?(string, "UserSession.UserSessionController") do
+    if String.contains?(string, "UserSessionController") do
       string
     else
       String.replace(string, ~r/(\nend\s*)$/, "\n#{routes_code}\n\\1")

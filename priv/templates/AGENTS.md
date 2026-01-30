@@ -19,6 +19,161 @@ This is a Phoenix web application using a **deadview-first architecture** with H
 
 ---
 
+## Controller & View Conventions
+
+### Module Naming
+
+Controllers and HTML modules use **flat naming** (no nested modules):
+
+```elixir
+# CORRECT - flat module name
+defmodule MyAppWeb.PostController do
+  use MyAppWeb, :controller
+end
+
+defmodule MyAppWeb.PostHTML do
+  use MyAppWeb, :html
+  embed_templates "html/*"
+end
+
+# INCORRECT - do not nest modules
+defmodule MyAppWeb.Post.PostController do  # WRONG
+```
+
+### File Structure
+
+```
+lib/my_app_web/
+├── controllers/
+│   └── post/                        # Directory per resource
+│       ├── post_controller.ex       # Module: MyAppWeb.PostController
+│       ├── post_html.ex             # Module: MyAppWeb.PostHTML
+│       └── html/
+│           ├── index.html.heex      # List view
+│           ├── show.html.heex       # Detail view
+│           ├── new.html.heex        # New form page (uses partial)
+│           ├── edit.html.heex       # Edit form page (uses partial)
+│           └── post_form.html.heex  # Form partial for Turbo Stream updates
+```
+
+### Action Naming (Rails Convention)
+
+Use standard RESTful action names:
+
+| Action | HTTP Method | Path | Purpose |
+|--------|-------------|------|---------|
+| `index` | GET | /posts | List all resources |
+| `new` | GET | /posts/new | Display new form |
+| `create` | POST | /posts | Create resource |
+| `show` | GET | /posts/:id | Display single resource |
+| `edit` | GET | /posts/:id/edit | Display edit form |
+| `update` | PUT/PATCH | /posts/:id | Update resource |
+| `destroy` | DELETE | /posts/:id | Delete resource |
+
+Custom actions are allowed for specific needs (e.g., `confirm_email` for email verification).
+
+### Router Configuration
+
+```elixir
+scope "/", MyAppWeb do
+  pipe_through :browser
+
+  get "/", HomeController, :index
+
+  # RESTful routes
+  get "/posts", PostController, :index
+  get "/posts/new", PostController, :new
+  post "/posts", PostController, :create
+  get "/posts/:id", PostController, :show
+  get "/posts/:id/edit", PostController, :edit
+  put "/posts/:id", PostController, :update
+  delete "/posts/:id", PostController, :destroy
+end
+```
+
+---
+
+## Template Partials
+
+### Purpose
+
+Partials are extracted template fragments that can be:
+1. **Reused** across multiple views
+2. **Replaced via Turbo Streams** for dynamic form updates
+
+### Naming Convention
+
+Use descriptive names that **avoid conflicts** with Phoenix.Component functions:
+
+```
+# CORRECT - descriptive partial names
+post_form.html.heex
+registration_form.html.heex
+email_form.html.heex
+
+# INCORRECT - conflicts with Phoenix.Component.form/1
+form.html.heex  # Will cause compilation error!
+```
+
+### Creating Partials
+
+1. Extract the form into a partial file:
+
+```heex
+<%!-- html/post_form.html.heex --%>
+<.form for={@form} id="post-form" action={~p"/posts"} class="space-y-4">
+  <.input field={@form[:title]} label="Title" />
+  <.input field={@form[:body]} type="textarea" label="Body" />
+  <.button type="submit">Save</.button>
+</.form>
+```
+
+2. Call from the main template:
+
+```heex
+<%!-- html/new.html.heex --%>
+<Layouts.app flash={@flash}>
+  <.header>New Post</.header>
+  <.post_form form={@form} />
+</Layouts.app>
+```
+
+### Turbo Stream Form Updates
+
+Partials enable granular form replacement on validation errors:
+
+```elixir
+def create(conn, %{"post" => params}) do
+  case Blog.create_post(params) do
+    {:ok, post} ->
+      conn
+      |> put_flash(:info, "Post created!")
+      |> redirect(to: ~p"/posts/#{post}")
+
+    {:error, changeset} ->
+      form = to_form(changeset)
+
+      conn
+      |> put_status(:unprocessable_entity)
+      |> stream(:replace, "post-form", PostHTML.post_form(%{form: form}))
+      |> send_turbo_stream()
+  end
+end
+```
+
+### ID Conventions for Turbo Streams
+
+Every form and streamable element needs a unique ID:
+
+| Element | ID Pattern | Example |
+|---------|------------|---------|
+| Forms | `{resource}-form` | `post-form`, `registration-form` |
+| List containers | `{resources}-list` | `posts-list` |
+| Individual items | `{resource}-{id}` | `post-42` |
+| Counts/Badges | `{resources}-count` | `posts-count` |
+
+---
+
 ## Elixir Guidelines
 
 - Elixir lists **do not support index-based access**. Use `Enum.at/2`, pattern matching, or `List` functions
@@ -82,11 +237,11 @@ defmodule MyAppWeb.PostHTML do
   # Function components for reuse
   attr :post, :map, required: true
   def post_card(assigns) do
-    ~H\"\"\"
+    ~H"""
     <article id={"post-#{@post.id}"}>
       {@post.title}
     </article>
-    \"\"\"
+    """
   end
 end
 ```
@@ -265,25 +420,17 @@ turbo_redirect(conn, to: ~p"/posts")
 def create(conn, %{"post" => params}) do
   case Blog.create_post(params) do
     {:ok, post} ->
-      if turbo_stream_request?(conn) do
-        conn
-        |> put_flash(:info, "Created!")
-        |> stream(:prepend, "posts", PostHTML.post(%{post: post}))
-        |> stream(:replace, "form", PostHTML.form(%{changeset: Blog.change_post(%Post{})}))
-        |> send_turbo_stream()
-      else
-        redirect(conn, to: ~p"/posts/#{post}")
-      end
+      conn
+      |> put_flash(:info, "Created!")
+      |> stream(:prepend, "posts-list", PostHTML.post_card(%{post: post}))
+      |> stream(:replace, "post-form", PostHTML.post_form(%{form: to_form(Blog.change_post(%Post{}))}))
+      |> send_turbo_stream()
 
     {:error, changeset} ->
-      if turbo_stream_request?(conn) do
-        conn
-        |> put_status(:unprocessable_entity)
-        |> stream(:replace, "form", PostHTML.form(%{changeset: changeset}))
-        |> send_turbo_stream()
-      else
-        render(conn, :new, changeset: changeset)
-      end
+      conn
+      |> put_status(:unprocessable_entity)
+      |> stream(:replace, "post-form", PostHTML.post_form(%{form: to_form(changeset)}))
+      |> send_turbo_stream()
   end
 end
 ```
@@ -295,7 +442,7 @@ end
 <meta name="turbo-stream-source" content="posts">
 
 # Broadcast from server
-MyAppWeb.Turbo.broadcast("posts", [{:prepend, "posts", post_html}])
+MyAppWeb.Turbo.broadcast("posts", [{:prepend, "posts-list", post_html}])
 ```
 
 ---
@@ -491,10 +638,12 @@ end
 
 ## Key Principles
 
-1. **Semantic IDs**: Every streamable element needs a unique ID (`post-#{id}`)
-2. **HTTP Status Codes**: Use `422 :unprocessable_entity` for validation errors
-3. **Granular Updates**: Stream only what changed, not entire lists
-4. **Composable Components**: Create small function components for Turbo Stream content
-5. **Turbo Frames for Scoping**: Use frames to scope navigation to page sections
-6. **Alpine for UI State**: Use Alpine.js for dropdowns, modals, tabs, client-side validation
-7. **Turbo for Server Communication**: Use Turbo Streams for server-driven updates
+1. **Flat Module Names**: Use `AppWeb.PostController`, not `AppWeb.Post.PostController`
+2. **Rails Action Names**: `index`, `new`, `create`, `show`, `edit`, `update`, `destroy`
+3. **Descriptive Partial Names**: Use `post_form`, not `form` (avoids conflicts)
+4. **Semantic IDs**: Every streamable element needs a unique ID (`post-#{id}`)
+5. **HTTP Status Codes**: Use `422 :unprocessable_entity` for validation errors
+6. **Granular Updates**: Stream only what changed, not entire lists
+7. **Turbo Frames for Scoping**: Use frames to scope navigation to page sections
+8. **Alpine for UI State**: Use Alpine.js for dropdowns, modals, tabs, client-side validation
+9. **Turbo for Server Communication**: Use Turbo Streams for server-driven updates

@@ -1,4 +1,4 @@
-defmodule <%= @web_module %>.Home.HomeController do
+defmodule <%= @web_module %>.HomeController do
   use <%= @web_module %>, :controller
 
   def index(conn, _params) do

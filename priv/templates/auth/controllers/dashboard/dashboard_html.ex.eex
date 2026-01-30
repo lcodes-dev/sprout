@@ -1,4 +1,4 @@
-defmodule <%= @web_module %>.Dashboard.DashboardHTML do
+defmodule <%= @web_module %>.DashboardHTML do
   use <%= @web_module %>, :html
 
   embed_templates "html/*"
