@@ -865,10 +865,11 @@ defmodule Mix.Tasks.Sprout.Install do
     if String.contains?(string, "fetch_current_scope_for_user") do
       string
     else
+      # Add plug :fetch_current_scope_for_user before the end of the :browser pipeline
       String.replace(
         string,
-        ~r/(pipeline :browser do\s*plug :accepts.*?\n)/,
-        "\\1    plug :fetch_current_scope_for_user\n"
+        ~r/(pipeline :browser do\s*.+?)(\n  end)/s,
+        "\\1\n    plug :fetch_current_scope_for_user\\2"
       )
     end
   end
