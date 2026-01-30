@@ -84,9 +84,10 @@ defmodule <%= @app_module %>.Repo.Migrations.CreateBillingTables do
     create index(:purchases, [:product_id])
     create index(:purchases, [:billable_customer_id, :status])
 
-    # Add check constraints for credits
-    create constraint(:purchases, :credits_remaining_non_negative, check: "credits_remaining >= 0")
-    create constraint(:purchases, :credits_remaining_lte_granted, check: "credits_remaining <= credits_granted")
+    # Add check constraints for credits (PostgreSQL only - SQLite doesn't support ALTER TABLE ADD CONSTRAINT)
+    # Validation is handled at the application level in the schema for all databases
+    create_constraint_if_postgres(:purchases, :credits_remaining_non_negative, check: "credits_remaining >= 0")
+    create_constraint_if_postgres(:purchases, :credits_remaining_lte_granted, check: "credits_remaining <= credits_granted")
 
     # Credit spends - audit log for credit usage
     create table(:credit_spends) do
@@ -101,5 +102,17 @@ defmodule <%= @app_module %>.Repo.Migrations.CreateBillingTables do
 
     create index(:credit_spends, [:billable_customer_id])
     create index(:credit_spends, [:reference_type, :reference_id])
+  end
+
+  # Create constraint only for PostgreSQL (SQLite doesn't support it)
+  defp create_constraint_if_postgres(table, name, opts) do
+    case repo_adapter() do
+      Ecto.Adapters.Postgres -> create(constraint(table, name, opts))
+      _ -> :ok
+    end
+  end
+
+  defp repo_adapter do
+    Application.get_env(:<%= @app_name %>, <%= @app_module %>.Repo)[:adapter]
   end
 end

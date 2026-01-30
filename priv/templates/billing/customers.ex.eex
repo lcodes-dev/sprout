@@ -5,8 +5,6 @@ defmodule <%= @app_module %>.Billing.Customers do
   Handles creating and retrieving billable customers, linking them to Paddle.
   """
 
-  import Ecto.Query
-
   alias <%= @app_module %>.Repo
   alias <%= @app_module %>.Billing.Billable
   alias <%= @app_module %>.Billing.Schemas.BillableCustomer

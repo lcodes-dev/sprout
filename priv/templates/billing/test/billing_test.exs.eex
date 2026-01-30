@@ -1,5 +1,5 @@
 defmodule <%= @app_module %>.BillingTest do
-  use <%= @app_module %>.DataCase, async: true
+  use <%= @app_module %>.DataCase, async: false
 
   alias <%= @app_module %>.Billing
   alias <%= @app_module %>.Billing.Schemas.{Subscription, Purchase}
@@ -179,9 +179,11 @@ defmodule <%= @app_module %>.BillingTest do
       # Spend 60, should use all 50 from old + 10 from new
       assert {:ok, 40} = Billing.spend_credits(user, 60, "Big spend")
 
-      # Check the remaining credits are from the new purchase
-      [purchase | _] = Billing.list_credit_purchases(user)
-      assert purchase.credits_remaining == 40
+      # Check that the new purchase has the remaining 40 credits (FIFO used old first)
+      # list_credit_purchases returns in purchase_at order (oldest first)
+      [old_purchase, new_purchase] = Billing.list_credit_purchases(user)
+      assert old_purchase.credits_remaining == 0
+      assert new_purchase.credits_remaining == 40
     end
 
     test "spend_credits/4 returns error when insufficient" do

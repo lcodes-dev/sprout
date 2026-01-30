@@ -13,6 +13,11 @@ defmodule <%= @app_module %>.Billing.Credits do
   alias <%= @app_module %>.Billing.Customers
   alias <%= @app_module %>.Billing.Schemas.{BillableCustomer, Purchase, CreditSpend}
 
+  @doc false
+  def repo_adapter do
+    Application.get_env(:<%= @app_name %>, <%= @app_module %>.Repo)[:adapter]
+  end
+
   @doc """
   Gets the total credit balance for an entity.
   """
@@ -58,17 +63,22 @@ defmodule <%= @app_module %>.Billing.Credits do
 
       now = DateTime.utc_now(:second)
 
-      # Lock and fetch purchases with remaining credits, oldest first (FIFO)
-      purchases =
+      # Fetch purchases with remaining credits, oldest first (FIFO)
+      # Use row-level locking on PostgreSQL; SQLite relies on transaction isolation
+      base_query =
         from(p in Purchase,
           where: p.billable_customer_id == ^customer.id,
           where: p.status == "completed",
           where: p.credits_remaining > 0,
           where: is_nil(p.credits_expire_at) or p.credits_expire_at > ^now,
-          order_by: [asc: p.purchased_at],
-          lock: "FOR UPDATE"
+          order_by: [asc: p.purchased_at]
         )
-        |> Repo.all()
+
+      purchases =
+        case repo_adapter() do
+          Ecto.Adapters.Postgres -> base_query |> lock("FOR UPDATE") |> Repo.all()
+          _ -> base_query |> Repo.all()
+        end
 
       total_available = Enum.sum(Enum.map(purchases, & &1.credits_remaining))
 
@@ -151,7 +161,7 @@ defmodule <%= @app_module %>.Billing.Credits do
       on: cs.billable_customer_id == c.id,
       where: c.billable_type == ^billable_type,
       where: c.billable_id == ^billable_id,
-      order_by: [desc: cs.inserted_at],
+      order_by: [desc: cs.id],
       limit: ^limit
     )
     |> Repo.all()

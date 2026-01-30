@@ -1,5 +1,5 @@
 defmodule <%= @app_module %>.CreditsTest do
-  use <%= @app_module %>.DataCase, async: true
+  use <%= @app_module %>.DataCase, async: false
 
   alias <%= @app_module %>.Billing.Credits
   alias <%= @app_module %>.Billing.Schemas.{Purchase, CreditSpend}
