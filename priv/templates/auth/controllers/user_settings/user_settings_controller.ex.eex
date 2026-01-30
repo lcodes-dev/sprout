@@ -33,7 +33,9 @@ defmodule <%= @web_module %>.UserSettingsController do
         |> redirect(to: ~p"/users/settings")
 
       changeset ->
-        render(conn, :edit, email_changeset: %{changeset | action: :insert}, current_scope: conn.assigns[:current_scope])
+        conn
+        |> put_status(:unprocessable_entity)
+        |> render(:edit, email_changeset: %{changeset | action: :insert}, current_scope: conn.assigns[:current_scope])
     end
   end
 
@@ -49,7 +51,9 @@ defmodule <%= @web_module %>.UserSettingsController do
         |> UserAuth.log_in_user(user)
 
       {:error, changeset} ->
-        render(conn, :edit, password_changeset: changeset, current_scope: conn.assigns[:current_scope])
+        conn
+        |> put_status(:unprocessable_entity)
+        |> render(:edit, password_changeset: changeset, current_scope: conn.assigns[:current_scope])
     end
   end
 

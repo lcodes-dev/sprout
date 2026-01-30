@@ -43,7 +43,9 @@ defmodule <%= @web_module %>.UserSessionController do
             as: "user"
           )
 
-        render(conn, :new, form: form, current_scope: conn.assigns[:current_scope])
+        conn
+        |> put_status(:unprocessable_entity)
+        |> render(:new, form: form, current_scope: conn.assigns[:current_scope])
     end
   end
 

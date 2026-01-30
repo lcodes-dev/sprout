@@ -25,7 +25,10 @@ defmodule <%= @web_module %>.UserRegistrationController do
 
       {:error, %Ecto.Changeset{} = changeset} ->
         form = Phoenix.Component.to_form(changeset, as: "user")
-        render(conn, :new, form: form, current_scope: conn.assigns[:current_scope])
+
+        conn
+        |> put_status(:unprocessable_entity)
+        |> render(:new, form: form, current_scope: conn.assigns[:current_scope])
     end
   end
 end

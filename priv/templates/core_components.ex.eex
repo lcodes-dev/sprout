@@ -87,22 +87,32 @@ defmodule <%= @web_module %>.CoreComponents do
     <div
       :if={msg = render_slot(@inner_block) || Phoenix.Flash.get(@flash, @kind)}
       id={@id}
-      phx-click={JS.push("lv:clear-flash", value: %{key: @kind}) |> hide("##{@id}")}
+      x-data="{ show: true }"
+      x-show="show"
+      x-init="setTimeout(() => show = false, 5000)"
+      x-transition:leave="transition ease-in duration-200"
+      x-transition:leave-start="opacity-100 translate-y-0"
+      x-transition:leave-end="opacity-0 -translate-y-2"
       role="alert"
       class="fixed top-4 right-4 z-50"
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96",
+        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 flex items-start gap-3",
         @kind == :error && "alert-destructive"
       ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
+        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0 mt-0.5" />
+        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0 mt-0.5" />
+        <div class="flex-1 min-w-0">
           <h2 :if={@title} class="font-semibold">{@title}</h2>
           <section>{msg}</section>
         </div>
-        <button type="button" class="ml-auto" aria-label={gettext("close")}>
+        <button
+          type="button"
+          class="shrink-0"
+          aria-label={gettext("close")}
+          @click="show = false"
+        >
           <.icon name="hero-x-mark" class="size-4 opacity-70 hover:opacity-100" />
         </button>
       </div>
