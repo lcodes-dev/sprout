@@ -1,0 +1,262 @@
+defmodule <%= @app_module %>.CreditsTest do
+  use <%= @app_module %>.DataCase, async: true
+
+  alias <%= @app_module %>.Billing.Credits
+  alias <%= @app_module %>.Billing.Schemas.{Purchase, CreditSpend}
+
+  import <%= @app_module %>.AccountsFixtures
+  import <%= @app_module %>.BillingFixtures
+
+  describe "get_credit_balance/1" do
+    test "returns 0 for user with no credits" do
+      user = user_fixture()
+      assert Credits.get_credit_balance(user) == 0
+    end
+
+    test "sums credits across multiple purchases" do
+      user = user_fixture()
+
+      credit_purchase_fixture(user, 100)
+      credit_purchase_fixture(user, 200)
+      credit_purchase_fixture(user, 50)
+
+      assert Credits.get_credit_balance(user) == 350
+    end
+
+    test "only counts completed purchases" do
+      user = user_fixture()
+
+      credit_purchase_fixture(user, 100, %{status: "completed"})
+      credit_purchase_fixture(user, 200, %{status: "refunded"})
+
+      assert Credits.get_credit_balance(user) == 100
+    end
+
+    test "excludes expired credits" do
+      user = user_fixture()
+      past = DateTime.add(DateTime.utc_now(), -1, :day)
+      future = DateTime.add(DateTime.utc_now(), 30, :day)
+
+      credit_purchase_fixture(user, 100, %{credits_expire_at: past})
+      credit_purchase_fixture(user, 200, %{credits_expire_at: future})
+      credit_purchase_fixture(user, 50, %{credits_expire_at: nil})
+
+      assert Credits.get_credit_balance(user) == 250
+    end
+
+    test "only counts remaining credits" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user)
+
+      Repo.insert!(%Purchase{
+        billable_customer_id: customer.id,
+        status: "completed",
+        credits_granted: 100,
+        credits_remaining: 30,
+        purchased_at: DateTime.utc_now(:second)
+      })
+
+      assert Credits.get_credit_balance(user) == 30
+    end
+  end
+
+  describe "spend_credits/4" do
+    test "deducts from a single purchase" do
+      user = user_fixture()
+      purchase = credit_purchase_fixture(user, 100)
+
+      assert {:ok, 70} = Credits.spend_credits(user, 30, "Test")
+
+      updated = Repo.get!(Purchase, purchase.id)
+      assert updated.credits_remaining == 70
+    end
+
+    test "creates a spend record" do
+      user = user_fixture()
+      credit_purchase_fixture(user, 100)
+
+      {:ok, _} = Credits.spend_credits(user, 30, "Generated image", reference_type: "image", reference_id: 123)
+
+      [spend] = Credits.list_credit_spends(user)
+      assert spend.amount == 30
+      assert spend.description == "Generated image"
+      assert spend.reference_type == "image"
+      assert spend.reference_id == 123
+    end
+
+    test "uses FIFO - oldest credits first" do
+      user = user_fixture()
+
+      # Create older purchase first
+      old = credit_purchase_fixture(user, 50)
+      :timer.sleep(10)
+      new = credit_purchase_fixture(user, 50)
+
+      # Spend 60 credits (should use all 50 from old + 10 from new)
+      {:ok, 40} = Credits.spend_credits(user, 60, "FIFO test")
+
+      old_updated = Repo.get!(Purchase, old.id)
+      new_updated = Repo.get!(Purchase, new.id)
+
+      assert old_updated.credits_remaining == 0
+      assert new_updated.credits_remaining == 40
+    end
+
+    test "spans multiple purchases when needed" do
+      user = user_fixture()
+
+      p1 = credit_purchase_fixture(user, 30)
+      :timer.sleep(10)
+      p2 = credit_purchase_fixture(user, 30)
+      :timer.sleep(10)
+      p3 = credit_purchase_fixture(user, 40)
+
+      # Spend 70 credits
+      {:ok, 30} = Credits.spend_credits(user, 70, "Multi-purchase test")
+
+      assert Repo.get!(Purchase, p1.id).credits_remaining == 0
+      assert Repo.get!(Purchase, p2.id).credits_remaining == 0
+      assert Repo.get!(Purchase, p3.id).credits_remaining == 30
+    end
+
+    test "returns error when insufficient credits" do
+      user = user_fixture()
+      credit_purchase_fixture(user, 50)
+
+      assert {:error, :insufficient_credits} = Credits.spend_credits(user, 100, "Too much")
+
+      # Balance should be unchanged
+      assert Credits.get_credit_balance(user) == 50
+    end
+
+    test "returns error when no customer exists" do
+      user = user_fixture()
+
+      assert {:error, :no_customer} = Credits.spend_credits(user, 10, "No customer")
+    end
+
+    test "skips expired credits during spend" do
+      user = user_fixture()
+      past = DateTime.add(DateTime.utc_now(), -1, :day)
+
+      credit_purchase_fixture(user, 100, %{credits_expire_at: past})
+      active = credit_purchase_fixture(user, 50)
+
+      {:ok, 30} = Credits.spend_credits(user, 20, "Skip expired")
+
+      # Only the active purchase should be touched
+      assert Repo.get!(Purchase, active.id).credits_remaining == 30
+    end
+
+    test "is atomic - rolls back on failure" do
+      user = user_fixture()
+      purchase = credit_purchase_fixture(user, 50)
+
+      # Try to spend more than available
+      {:error, :insufficient_credits} = Credits.spend_credits(user, 100, "Fail")
+
+      # Purchase should be unchanged
+      unchanged = Repo.get!(Purchase, purchase.id)
+      assert unchanged.credits_remaining == 50
+
+      # No spend record should exist
+      assert Credits.list_credit_spends(user) == []
+    end
+  end
+
+  describe "grant_credits/5" do
+    test "creates a purchase with credits" do
+      user = user_fixture()
+      admin = user_fixture()
+
+      {:ok, purchase} = Credits.grant_credits(user, 500, "Welcome bonus", admin.id)
+
+      assert purchase.credits_granted == 500
+      assert purchase.credits_remaining == 500
+      assert purchase.granted_by == admin.id
+      assert purchase.grant_reason == "Welcome bonus"
+      assert purchase.status == "completed"
+    end
+
+    test "can set expiration" do
+      user = user_fixture()
+      admin = user_fixture()
+      expires = DateTime.add(DateTime.utc_now(), 30, :day)
+
+      {:ok, purchase} = Credits.grant_credits(user, 100, "Limited offer", admin.id, credits_expire_at: expires)
+
+      assert purchase.credits_expire_at != nil
+    end
+
+    test "updates balance" do
+      user = user_fixture()
+      admin = user_fixture()
+
+      assert Credits.get_credit_balance(user) == 0
+
+      {:ok, _} = Credits.grant_credits(user, 100, "Grant", admin.id)
+
+      assert Credits.get_credit_balance(user) == 100
+    end
+  end
+
+  describe "list_credit_spends/2" do
+    test "returns spend history in descending order" do
+      user = user_fixture()
+      credit_purchase_fixture(user, 200)
+
+      Credits.spend_credits(user, 10, "First")
+      :timer.sleep(10)
+      Credits.spend_credits(user, 20, "Second")
+      :timer.sleep(10)
+      Credits.spend_credits(user, 30, "Third")
+
+      spends = Credits.list_credit_spends(user)
+
+      assert [third, second, first] = spends
+      assert third.amount == 30
+      assert second.amount == 20
+      assert first.amount == 10
+    end
+
+    test "respects limit option" do
+      user = user_fixture()
+      credit_purchase_fixture(user, 200)
+
+      for i <- 1..10 do
+        Credits.spend_credits(user, 1, "Spend #{i}")
+      end
+
+      spends = Credits.list_credit_spends(user, limit: 5)
+      assert length(spends) == 5
+    end
+  end
+
+  describe "list_credit_purchases/1" do
+    test "returns purchases with credits" do
+      user = user_fixture()
+
+      credit_purchase_fixture(user, 100)
+      credit_purchase_fixture(user, 50)
+
+      # Regular purchase without credits
+      purchase_fixture(user)
+
+      purchases = Credits.list_credit_purchases(user)
+      assert length(purchases) == 2
+    end
+
+    test "orders by purchased_at ascending (FIFO)" do
+      user = user_fixture()
+
+      credit_purchase_fixture(user, 100)
+      :timer.sleep(10)
+      credit_purchase_fixture(user, 200)
+
+      [first, second] = Credits.list_credit_purchases(user)
+
+      assert first.credits_granted == 100
+      assert second.credits_granted == 200
+    end
+  end
+end

@@ -1,0 +1,166 @@
+defmodule <%= @app_module %>.BillingFixtures do
+  @moduledoc """
+  Test helpers for creating billing entities.
+  """
+
+  alias <%= @app_module %>.Repo
+  alias <%= @app_module %>.Billing
+  alias <%= @app_module %>.Billing.Schemas.{BillableCustomer, Product, Subscription, Purchase, CreditSpend}
+
+  @doc """
+  Creates a billable customer for a user.
+  """
+  def billable_customer_fixture(user, attrs \\ %{}) do
+    {:ok, customer} =
+      attrs
+      |> Enum.into(%{
+        billable_id: user.id,
+        billable_type: "user"
+      })
+      |> then(&BillableCustomer.changeset(%BillableCustomer{}, &1))
+      |> Repo.insert()
+
+    customer
+  end
+
+  @doc """
+  Creates a product.
+  """
+  def product_fixture(attrs \\ %{}) do
+    {:ok, product} =
+      attrs
+      |> Enum.into(%{
+        name: "Test Product #{System.unique_integer([:positive])}",
+        slug: "test-product-#{System.unique_integer([:positive])}",
+        type: "subscription",
+        active: true
+      })
+      |> then(&Product.changeset(%Product{}, &1))
+      |> Repo.insert()
+
+    product
+  end
+
+  @doc """
+  Creates a subscription product.
+  """
+  def subscription_product_fixture(attrs \\ %{}) do
+    product_fixture(Map.merge(%{type: "subscription"}, attrs))
+  end
+
+  @doc """
+  Creates a one-time product.
+  """
+  def one_time_product_fixture(attrs \\ %{}) do
+    product_fixture(Map.merge(%{type: "one_time"}, attrs))
+  end
+
+  @doc """
+  Creates a credit product.
+  """
+  def credit_product_fixture(attrs \\ %{}) do
+    product_fixture(Map.merge(%{
+      type: "credits",
+      metadata: %{"credits_amount" => 100}
+    }, attrs))
+  end
+
+  @doc """
+  Creates a subscription for a user.
+  """
+  def subscription_fixture(user, attrs \\ %{}) do
+    customer = get_or_create_customer(user)
+    product = Map.get(attrs, :product) || subscription_product_fixture()
+
+    {:ok, subscription} =
+      attrs
+      |> Map.drop([:product])
+      |> Enum.into(%{
+        billable_customer_id: customer.id,
+        product_id: product.id,
+        name: "default",
+        status: "active"
+      })
+      |> then(&Subscription.changeset(%Subscription{}, &1))
+      |> Repo.insert()
+
+    subscription
+  end
+
+  @doc """
+  Grants a free subscription to a user.
+  """
+  def grant_subscription_fixture(user, product_slug, granted_by_id, opts \\ []) do
+    {:ok, subscription} = Billing.grant_subscription(user, product_slug, granted_by_id, opts)
+    subscription
+  end
+
+  @doc """
+  Creates a purchase for a user.
+  """
+  def purchase_fixture(user, attrs \\ %{}) do
+    customer = get_or_create_customer(user)
+    product = Map.get(attrs, :product) || one_time_product_fixture()
+
+    {:ok, purchase} =
+      attrs
+      |> Map.drop([:product])
+      |> Enum.into(%{
+        billable_customer_id: customer.id,
+        product_id: product.id,
+        status: "completed",
+        purchased_at: DateTime.utc_now(:second)
+      })
+      |> then(&Purchase.changeset(%Purchase{}, &1))
+      |> Repo.insert()
+
+    purchase
+  end
+
+  @doc """
+  Creates a credit purchase for a user.
+  """
+  def credit_purchase_fixture(user, credits, attrs \\ %{}) do
+    product = Map.get(attrs, :product) || credit_product_fixture()
+
+    purchase_fixture(user, Map.merge(%{
+      product: product,
+      credits_granted: credits,
+      credits_remaining: credits
+    }, attrs))
+  end
+
+  @doc """
+  Grants credits to a user.
+  """
+  def grant_credits_fixture(user, amount, granted_by_id, opts \\ []) do
+    {:ok, purchase} = Billing.grant_credits(user, amount, "Test grant", granted_by_id, opts)
+    purchase
+  end
+
+  @doc """
+  Creates a credit spend record.
+  """
+  def credit_spend_fixture(user, amount, attrs \\ %{}) do
+    customer = get_or_create_customer(user)
+
+    {:ok, spend} =
+      attrs
+      |> Enum.into(%{
+        billable_customer_id: customer.id,
+        amount: amount,
+        description: "Test spend"
+      })
+      |> then(&CreditSpend.changeset(%CreditSpend{}, &1))
+      |> Repo.insert()
+
+    spend
+  end
+
+  defp get_or_create_customer(user) do
+    case Billing.Customers.get_customer("user", user.id) do
+      nil -> billable_customer_fixture(user)
+      customer -> customer
+    end
+  end
+end

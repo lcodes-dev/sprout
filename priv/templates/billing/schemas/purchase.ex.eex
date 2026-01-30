@@ -1,0 +1,152 @@
+defmodule <%= @app_module %>.Billing.Schemas.Purchase do
+  @moduledoc """
+  Represents a one-time purchase for a billable customer.
+
+  Purchases can be:
+  - One-time products (courses, books, etc.) - provides gated access
+  - Credit packages - grants credits that can be spent on features
+
+  Credits are tracked ON purchases (credits_granted, credits_remaining).
+  Balance = SUM of all credits_remaining across purchases.
+  """
+
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  alias <%= @app_module %>.Billing.Schemas.{BillableCustomer, Product}
+
+  @statuses ~w(completed refunded)
+
+  schema "purchases" do
+    field :paddle_transaction_id, :string
+    field :status, :string
+
+    # Credit tracking (for credit-type products)
+    field :credits_granted, :integer, default: 0
+    field :credits_remaining, :integer, default: 0
+    field :credits_expire_at, :utc_datetime
+
+    field :purchased_at, :utc_datetime
+    field :refunded_at, :utc_datetime
+    field :access_revoked_at, :utc_datetime
+    field :granted_by, :integer
+    field :grant_reason, :string
+
+    belongs_to :billable_customer, BillableCustomer
+    belongs_to :product, Product
+
+    timestamps(type: :utc_datetime)
+  end
+
+  @doc false
+  def changeset(purchase, attrs) do
+    purchase
+    |> cast(attrs, [
+      :billable_customer_id,
+      :product_id,
+      :paddle_transaction_id,
+      :status,
+      :credits_granted,
+      :credits_remaining,
+      :credits_expire_at,
+      :purchased_at,
+      :refunded_at,
+      :access_revoked_at,
+      :granted_by,
+      :grant_reason
+    ])
+    |> validate_required([:billable_customer_id, :status, :purchased_at])
+    |> validate_inclusion(:status, @statuses)
+    |> validate_number(:credits_remaining, greater_than_or_equal_to: 0)
+    |> validate_credits_remaining()
+    |> unique_constraint(:paddle_transaction_id)
+  end
+
+  @doc """
+  Creates a changeset for a purchase from Paddle transaction.
+  """
+  def paddle_changeset(purchase, attrs) do
+    purchase
+    |> cast(attrs, [
+      :billable_customer_id,
+      :product_id,
+      :paddle_transaction_id,
+      :status,
+      :credits_granted,
+      :credits_remaining,
+      :credits_expire_at,
+      :purchased_at
+    ])
+    |> validate_required([:billable_customer_id, :paddle_transaction_id, :status, :purchased_at])
+    |> validate_inclusion(:status, @statuses)
+    |> unique_constraint(:paddle_transaction_id)
+  end
+
+  @doc """
+  Creates a changeset for a granted (free) purchase.
+  """
+  def grant_changeset(purchase, attrs) do
+    purchase
+    |> cast(attrs, [
+      :billable_customer_id,
+      :product_id,
+      :status,
+      :credits_granted,
+      :credits_remaining,
+      :credits_expire_at,
+      :purchased_at,
+      :granted_by,
+      :grant_reason
+    ])
+    |> validate_required([:billable_customer_id, :status, :purchased_at, :granted_by])
+    |> validate_inclusion(:status, @statuses)
+  end
+
+  @doc """
+  Creates a changeset for refunding a purchase.
+  """
+  def refund_changeset(purchase) do
+    now = DateTime.utc_now(:second)
+
+    purchase
+    |> change(status: "refunded", refunded_at: now, access_revoked_at: now, credits_remaining: 0)
+  end
+
+  @doc """
+  Creates a changeset for deducting credits.
+  """
+  def deduct_credits_changeset(purchase, amount) do
+    new_remaining = purchase.credits_remaining - amount
+
+    purchase
+    |> change(credits_remaining: new_remaining)
+    |> validate_number(:credits_remaining, greater_than_or_equal_to: 0)
+  end
+
+  defp validate_credits_remaining(changeset) do
+    credits_remaining = get_field(changeset, :credits_remaining)
+    credits_granted = get_field(changeset, :credits_granted)
+
+    if credits_remaining && credits_granted && credits_remaining > credits_granted do
+      add_error(changeset, :credits_remaining, "cannot exceed credits_granted")
+    else
+      changeset
+    end
+  end
+
+  @doc """
+  Returns true if the purchase grants access (not refunded).
+  """
+  def has_access?(%__MODULE__{status: "completed", access_revoked_at: nil}), do: true
+  def has_access?(_), do: false
+
+  @doc """
+  Returns true if the purchase has remaining credits that haven't expired.
+  """
+  def has_credits?(%__MODULE__{status: "completed", credits_remaining: remaining, credits_expire_at: expires_at})
+      when remaining > 0 do
+    is_nil(expires_at) or DateTime.compare(expires_at, DateTime.utc_now()) == :gt
+  end
+
+  def has_credits?(_), do: false
+end

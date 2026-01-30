@@ -1,0 +1,52 @@
+defmodule <%= @app_module %>.Billing.Schemas.Product do
+  @moduledoc """
+  Represents a product that can be purchased or subscribed to.
+
+  Products can be:
+  - "subscription" - recurring subscriptions
+  - "one_time" - one-time purchases (courses, books, etc.)
+  - "credits" - credit/token packages
+  """
+
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  @product_types ~w(subscription one_time credits)
+
+  schema "products" do
+    field :paddle_product_id, :string
+    field :paddle_price_id, :string
+    field :name, :string
+    field :slug, :string
+    field :type, :string
+    field :metadata, :map, default: %{}
+    field :active, :boolean, default: true
+
+    timestamps(type: :utc_datetime)
+  end
+
+  @doc false
+  def changeset(product, attrs) do
+    product
+    |> cast(attrs, [:paddle_product_id, :paddle_price_id, :name, :slug, :type, :metadata, :active])
+    |> validate_required([:name, :slug, :type])
+    |> validate_inclusion(:type, @product_types)
+    |> unique_constraint(:slug)
+  end
+
+  @doc """
+  Returns the credits amount for a credit-type product.
+  """
+  def credits_amount(%__MODULE__{type: "credits", metadata: metadata}) do
+    Map.get(metadata, "credits_amount", 0)
+  end
+
+  def credits_amount(_), do: 0
+
+  @doc """
+  Returns the features list for a product.
+  """
+  def features(%__MODULE__{metadata: metadata}) do
+    Map.get(metadata, "features", [])
+  end
+end

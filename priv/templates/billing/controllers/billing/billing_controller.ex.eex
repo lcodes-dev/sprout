@@ -1,0 +1,92 @@
+defmodule <%= @web_module %>.BillingController do
+  @moduledoc """
+  Handles billing-related pages and actions.
+
+  Provides:
+  - Billing dashboard showing subscriptions and purchases
+  - Portal redirect to Paddle customer portal
+  - Checkout initiation (client-side via Paddle.js)
+  """
+
+  use <%= @web_module %>, :controller
+
+  alias <%= @app_module %>.Billing
+
+  @doc """
+  Shows the billing dashboard with subscriptions and purchases.
+  """
+  def index(conn, _params) do
+    user = conn.assigns.current_scope.user
+
+    subscriptions = Billing.list_subscriptions(user)
+    purchases = Billing.list_purchases(user)
+    credit_balance = Billing.get_credit_balance(user)
+
+    render(conn, :index,
+      subscriptions: subscriptions,
+      purchases: purchases,
+      credit_balance: credit_balance,
+      paddle_client_token: paddle_client_token(),
+      paddle_environment: paddle_environment()
+    )
+  end
+
+  @doc """
+  Redirects to the Paddle customer portal.
+  """
+  def portal(conn, _params) do
+    user = conn.assigns.current_scope.user
+
+    case Billing.customer_portal_url(user) do
+      {:ok, url} ->
+        redirect(conn, external: url)
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Unable to access billing portal. Please try again.")
+        |> redirect(to: ~p"/billing")
+    end
+  end
+
+  @doc """
+  Returns checkout data for Paddle.js.
+
+  The actual checkout is handled client-side by Paddle.js.
+  This endpoint returns the necessary data to initialize checkout.
+  """
+  def checkout(conn, %{"price_id" => price_id}) do
+    user = conn.assigns.current_scope.user
+
+    with {:ok, customer} <- Billing.get_or_create_customer(user) do
+      checkout_data = %{
+        price_id: price_id,
+        customer_email: user.email,
+        paddle_customer_id: customer.paddle_customer_id,
+        success_url: url(~p"/billing?checkout=success"),
+        client_token: paddle_client_token()
+      }
+
+      json(conn, checkout_data)
+    else
+      {:error, _reason} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{error: "Unable to initialize checkout"})
+    end
+  end
+
+  defp paddle_client_token do
+    config()[:client_token]
+  end
+
+  defp paddle_environment do
+    case config()[:environment] do
+      :production -> "production"
+      _ -> "sandbox"
+    end
+  end
+
+  defp config do
+    Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing)[:paddle] || []
+  end
+end

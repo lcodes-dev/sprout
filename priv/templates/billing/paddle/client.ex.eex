@@ -1,0 +1,224 @@
+defmodule <%= @app_module %>.Billing.Paddle.Client do
+  @moduledoc """
+  HTTP client for Paddle Billing API.
+
+  Handles all API communication with Paddle including:
+  - Creating customers
+  - Managing subscriptions
+  - Generating checkout URLs
+  - Accessing customer portal
+  """
+
+  require Logger
+
+  @sandbox_url "https://sandbox-api.paddle.com"
+  @production_url "https://api.paddle.com"
+
+  @doc """
+  Returns the configured Paddle environment.
+  """
+  def environment do
+    config()[:environment] || :sandbox
+  end
+
+  @doc """
+  Returns the base URL for the Paddle API based on environment.
+  """
+  def base_url do
+    case environment() do
+      :production -> @production_url
+      _ -> @sandbox_url
+    end
+  end
+
+  @doc """
+  Creates a new customer in Paddle.
+
+  ## Options
+    - email: Customer email (required)
+    - name: Customer name (optional)
+  """
+  def create_customer(opts) do
+    body = %{
+      email: Keyword.fetch!(opts, :email)
+    }
+
+    body = if name = Keyword.get(opts, :name), do: Map.put(body, :name, name), else: body
+
+    post("/customers", body)
+  end
+
+  @doc """
+  Gets a customer by their Paddle customer ID.
+  """
+  def get_customer(paddle_customer_id) do
+    get("/customers/#{paddle_customer_id}")
+  end
+
+  @doc """
+  Updates a customer in Paddle.
+  """
+  def update_customer(paddle_customer_id, attrs) do
+    patch("/customers/#{paddle_customer_id}", attrs)
+  end
+
+  @doc """
+  Gets a subscription by its Paddle subscription ID.
+  """
+  def get_subscription(paddle_subscription_id) do
+    get("/subscriptions/#{paddle_subscription_id}")
+  end
+
+  @doc """
+  Cancels a subscription at the end of the current billing period.
+  """
+  def cancel_subscription(paddle_subscription_id, opts \\ []) do
+    body = %{
+      effective_from: Keyword.get(opts, :effective_from, "next_billing_period")
+    }
+
+    post("/subscriptions/#{paddle_subscription_id}/cancel", body)
+  end
+
+  @doc """
+  Pauses a subscription.
+  """
+  def pause_subscription(paddle_subscription_id, opts \\ []) do
+    body = %{
+      effective_from: Keyword.get(opts, :effective_from, "next_billing_period")
+    }
+
+    body =
+      if resume_at = Keyword.get(opts, :resume_at) do
+        Map.put(body, :resume_at, DateTime.to_iso8601(resume_at))
+      else
+        body
+      end
+
+    post("/subscriptions/#{paddle_subscription_id}/pause", body)
+  end
+
+  @doc """
+  Resumes a paused subscription.
+  """
+  def resume_subscription(paddle_subscription_id, opts \\ []) do
+    body = %{
+      effective_from: Keyword.get(opts, :effective_from, "immediately")
+    }
+
+    post("/subscriptions/#{paddle_subscription_id}/resume", body)
+  end
+
+  @doc """
+  Gets a transaction by its Paddle transaction ID.
+  """
+  def get_transaction(paddle_transaction_id) do
+    get("/transactions/#{paddle_transaction_id}")
+  end
+
+  @doc """
+  Generates a customer portal session URL.
+
+  The customer portal allows users to manage their subscriptions,
+  payment methods, and view invoices.
+  """
+  def create_portal_session(paddle_customer_id) do
+    post("/customers/#{paddle_customer_id}/portal-sessions", %{})
+  end
+
+  @doc """
+  Lists all prices for a product.
+  """
+  def list_prices(product_id) do
+    get("/prices", %{product_id: product_id})
+  end
+
+  @doc """
+  Gets a price by its ID.
+  """
+  def get_price(price_id) do
+    get("/prices/#{price_id}")
+  end
+
+  # Private HTTP helpers
+
+  defp get(path, params \\ %{}) do
+    url = build_url(path, params)
+
+    case Req.get(url, headers: headers()) do
+      {:ok, %{status: status, body: body}} when status in 200..299 ->
+        {:ok, body["data"]}
+
+      {:ok, %{status: status, body: body}} ->
+        Logger.error("Paddle API error: #{status} - #{inspect(body)}")
+        {:error, parse_error(body)}
+
+      {:error, reason} ->
+        Logger.error("Paddle API request failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp post(path, body) do
+    url = build_url(path)
+
+    case Req.post(url, json: body, headers: headers()) do
+      {:ok, %{status: status, body: response_body}} when status in 200..299 ->
+        {:ok, response_body["data"]}
+
+      {:ok, %{status: status, body: response_body}} ->
+        Logger.error("Paddle API error: #{status} - #{inspect(response_body)}")
+        {:error, parse_error(response_body)}
+
+      {:error, reason} ->
+        Logger.error("Paddle API request failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp patch(path, body) do
+    url = build_url(path)
+
+    case Req.patch(url, json: body, headers: headers()) do
+      {:ok, %{status: status, body: response_body}} when status in 200..299 ->
+        {:ok, response_body["data"]}
+
+      {:ok, %{status: status, body: response_body}} ->
+        Logger.error("Paddle API error: #{status} - #{inspect(response_body)}")
+        {:error, parse_error(response_body)}
+
+      {:error, reason} ->
+        Logger.error("Paddle API request failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp build_url(path, params \\ %{}) do
+    uri = URI.parse("#{base_url()}#{path}")
+
+    if map_size(params) > 0 do
+      query = URI.encode_query(params)
+      %{uri | query: query} |> URI.to_string()
+    else
+      URI.to_string(uri)
+    end
+  end
+
+  defp headers do
+    [
+      {"Authorization", "Bearer #{api_key()}"},
+      {"Content-Type", "application/json"}
+    ]
+  end
+
+  defp api_key do
+    config()[:api_key] || raise "Paddle API key not configured"
+  end
+
+  defp config do
+    Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing)[:paddle] || []
+  end
+
+  defp parse_error(%{"error" => error}), do: error
+  defp parse_error(body), do: body
+end

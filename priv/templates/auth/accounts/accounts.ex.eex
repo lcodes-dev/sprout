@@ -6,11 +6,8 @@ defmodule <%= @app_module %>.Accounts do
   import Ecto.Query, warn: false
   alias <%= @app_module %>.Repo
 
-  alias <%= @app_module %>.Accounts.{
-    User,
-    UserToken,
-    UserNotifier
-  }
+  alias <%= @app_module %>.Accounts.Schemas.{User, UserToken}
+  alias <%= @app_module %>.Accounts.UserNotifier
 
   ## Database getters
 

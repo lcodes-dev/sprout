@@ -1,0 +1,48 @@
+defmodule <%= @web_module %>.PaddleWebhookController do
+  @moduledoc """
+  Handles Paddle webhook events.
+
+  Paddle sends webhooks for subscription and transaction events.
+  All webhooks are verified using signature verification before processing.
+  """
+
+  use <%= @web_module %>, :controller
+
+  alias <%= @app_module %>.Billing.Paddle.{Signature, WebhookHandler}
+
+  require Logger
+
+  @doc """
+  Receives and processes Paddle webhook events.
+
+  The raw body is cached by the PaddleWebhookPlug for signature verification.
+  """
+  def webhook(conn, _params) do
+    raw_body = conn.assigns[:raw_body]
+    paddle_signature = get_req_header(conn, "paddle-signature") |> List.first()
+
+    case Signature.verify(raw_body, paddle_signature) do
+      {:ok, payload} ->
+        case WebhookHandler.handle_event(payload) do
+          :ok ->
+            conn
+            |> put_status(:ok)
+            |> json(%{status: "ok"})
+
+          {:error, reason} ->
+            Logger.error("Paddle webhook handler error: #{inspect(reason)}")
+
+            conn
+            |> put_status(:unprocessable_entity)
+            |> json(%{status: "error", message: "Processing failed"})
+        end
+
+      {:error, reason} ->
+        Logger.warning("Paddle webhook signature verification failed: #{inspect(reason)}")
+
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{status: "error", message: "Invalid signature"})
+    end
+  end
+end

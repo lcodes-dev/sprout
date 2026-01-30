@@ -1,0 +1,41 @@
+defmodule <%= @app_module %>.Billing.Schemas.BillableCustomer do
+  @moduledoc """
+  Represents a billable customer linked to Paddle.
+
+  This schema uses polymorphic associations to support billing any entity
+  (users now, organizations later) via billable_id and billable_type.
+  """
+
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  alias <%= @app_module %>.Billing.Schemas.{Subscription, Purchase}
+
+  schema "billable_customers" do
+    field :billable_id, :integer
+    field :billable_type, :string
+    field :paddle_customer_id, :string
+    field :trial_ends_at, :utc_datetime
+
+    has_many :subscriptions, Subscription
+    has_many :purchases, Purchase
+
+    timestamps(type: :utc_datetime)
+  end
+
+  @doc false
+  def changeset(billable_customer, attrs) do
+    billable_customer
+    |> cast(attrs, [:billable_id, :billable_type, :paddle_customer_id, :trial_ends_at])
+    |> validate_required([:billable_id, :billable_type])
+    |> unique_constraint([:billable_id, :billable_type])
+  end
+
+  @doc """
+  Creates a changeset for linking a Paddle customer ID.
+  """
+  def paddle_customer_changeset(billable_customer, paddle_customer_id) do
+    billable_customer
+    |> change(paddle_customer_id: paddle_customer_id)
+  end
+end

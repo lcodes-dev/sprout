@@ -1,0 +1,140 @@
+<div class="container mx-auto px-4 py-8 max-w-4xl">
+  <h1 class="text-2xl font-bold mb-8">Billing & Subscription</h1>
+
+  <%%= if @credit_balance > 0 do %>
+    <div class="bg-primary/10 rounded-lg p-4 mb-8">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm text-muted-foreground">Credit Balance</p>
+          <p class="text-2xl font-bold"><%%= @credit_balance %> credits</p>
+        </div>
+      </div>
+    </div>
+  <%% end %>
+
+  <section class="mb-8">
+    <h2 class="text-lg font-semibold mb-4">Subscriptions</h2>
+
+    <%%= if Enum.empty?(@subscriptions) do %>
+      <div class="border rounded-lg p-6 text-center">
+        <p class="text-muted-foreground mb-4">You don't have any active subscriptions.</p>
+        <a href="#plans" class="btn btn-primary">View Plans</a>
+      </div>
+    <%% else %>
+      <div class="space-y-4">
+        <%%= for subscription <- @subscriptions do %>
+          <div class="border rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="font-medium">
+                  <%%= if subscription.product, do: subscription.product.name, else: subscription.name %>
+                </h3>
+                <p class="text-sm text-muted-foreground">
+                  Status:
+                  <span class={[
+                    "font-medium",
+                    subscription.status == "active" && "text-green-600",
+                    subscription.status == "trialing" && "text-blue-600",
+                    subscription.status == "past_due" && "text-yellow-600",
+                    subscription.status in ["canceled", "paused"] && "text-red-600"
+                  ]}>
+                    <%%= String.capitalize(subscription.status) %>
+                  </span>
+                </p>
+                <%%= if subscription.current_period_end do %>
+                  <p class="text-sm text-muted-foreground">
+                    <%%= if subscription.status == "canceled" do %>
+                      Access until: <%%= Calendar.strftime(subscription.ends_at || subscription.current_period_end, "%B %d, %Y") %>
+                    <%% else %>
+                      Renews: <%%= Calendar.strftime(subscription.current_period_end, "%B %d, %Y") %>
+                    <%% end %>
+                  </p>
+                <%% end %>
+              </div>
+              <%%= if subscription.paddle_subscription_id do %>
+                <a href={~p"/billing/portal"} class="btn btn-outline btn-sm">
+                  Manage
+                </a>
+              <%% end %>
+            </div>
+          </div>
+        <%% end %>
+      </div>
+    <%% end %>
+  </section>
+
+  <section class="mb-8">
+    <h2 class="text-lg font-semibold mb-4">Purchases</h2>
+
+    <%%= if Enum.empty?(@purchases) do %>
+      <div class="border rounded-lg p-6 text-center">
+        <p class="text-muted-foreground">You haven't made any purchases yet.</p>
+      </div>
+    <%% else %>
+      <div class="space-y-4">
+        <%%= for purchase <- @purchases do %>
+          <div class="border rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <h3 class="font-medium">
+                  <%%= if purchase.product, do: purchase.product.name, else: "Purchase" %>
+                </h3>
+                <p class="text-sm text-muted-foreground">
+                  Purchased: <%%= Calendar.strftime(purchase.purchased_at, "%B %d, %Y") %>
+                </p>
+                <%%= if purchase.credits_granted > 0 do %>
+                  <p class="text-sm text-muted-foreground">
+                    Credits: <%%= purchase.credits_remaining %> / <%%= purchase.credits_granted %> remaining
+                  </p>
+                <%% end %>
+              </div>
+              <span class={[
+                "text-sm font-medium",
+                purchase.status == "completed" && "text-green-600",
+                purchase.status == "refunded" && "text-red-600"
+              ]}>
+                <%%= String.capitalize(purchase.status) %>
+              </span>
+            </div>
+          </div>
+        <%% end %>
+      </div>
+    <%% end %>
+  </section>
+
+  <section>
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-lg font-semibold">Billing History</h2>
+      <a href={~p"/billing/portal"} class="text-sm text-primary hover:underline">
+        View invoices →
+      </a>
+    </div>
+    <p class="text-sm text-muted-foreground">
+      Access your complete billing history, invoices, and receipts in the customer portal.
+    </p>
+  </section>
+</div>
+
+<script src="https://cdn.paddle.com/paddle/v2/paddle.js"></script>
+<script>
+  // Initialize Paddle.js
+  <%%= if @paddle_client_token do %>
+    Paddle.Environment.set('<%%= @paddle_environment %>');
+    Paddle.Initialize({
+      token: '<%%= @paddle_client_token %>'
+    });
+  <%% end %>
+
+  // Checkout function for use in product pages
+  window.openCheckout = function(priceId) {
+    Paddle.Checkout.open({
+      items: [{ priceId: priceId }],
+      customer: {
+        email: '<%%= @current_scope.user.email %>'
+      },
+      settings: {
+        successUrl: '<%%= url(~p"/billing?checkout=success") %>'
+      }
+    });
+  };
+</script>

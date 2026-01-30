@@ -1,0 +1,198 @@
+defmodule <%= @app_module %>.Billing.Credits do
+  @moduledoc """
+  Credit system management.
+
+  Credits are tracked ON purchases (credits_granted, credits_remaining).
+  Balance = SUM of all credits_remaining across purchases.
+  Credits are spent FIFO (oldest first) with expiration support.
+  """
+
+  import Ecto.Query
+
+  alias <%= @app_module %>.Repo
+  alias <%= @app_module %>.Billing.Customers
+  alias <%= @app_module %>.Billing.Schemas.{BillableCustomer, Purchase, CreditSpend}
+
+  @doc """
+  Gets the total credit balance for an entity.
+  """
+  def get_credit_balance(entity) do
+    billable_type = entity.__struct__.billable_type()
+    billable_id = entity.__struct__.billable_id(entity)
+
+    now = DateTime.utc_now(:second)
+
+    from(p in Purchase,
+      join: c in BillableCustomer,
+      on: p.billable_customer_id == c.id,
+      where: c.billable_type == ^billable_type,
+      where: c.billable_id == ^billable_id,
+      where: p.status == "completed",
+      where: p.credits_remaining > 0,
+      where: is_nil(p.credits_expire_at) or p.credits_expire_at > ^now,
+      select: coalesce(sum(p.credits_remaining), 0)
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Spends credits for an entity using FIFO.
+
+  Returns `{:ok, new_balance}` on success or `{:error, :insufficient_credits}` if
+  the entity doesn't have enough credits.
+
+  ## Options
+    - `:reference_type` - Type of reference (e.g., "image_generation", "feature_unlock")
+    - `:reference_id` - ID of the referenced entity
+  """
+  def spend_credits(entity, amount, description, opts \\ []) do
+    billable_type = entity.__struct__.billable_type()
+    billable_id = entity.__struct__.billable_id(entity)
+
+    Repo.transaction(fn ->
+      customer = Customers.get_customer(billable_type, billable_id)
+
+      if is_nil(customer) do
+        Repo.rollback(:no_customer)
+      end
+
+      now = DateTime.utc_now(:second)
+
+      # Lock and fetch purchases with remaining credits, oldest first (FIFO)
+      purchases =
+        from(p in Purchase,
+          where: p.billable_customer_id == ^customer.id,
+          where: p.status == "completed",
+          where: p.credits_remaining > 0,
+          where: is_nil(p.credits_expire_at) or p.credits_expire_at > ^now,
+          order_by: [asc: p.purchased_at],
+          lock: "FOR UPDATE"
+        )
+        |> Repo.all()
+
+      total_available = Enum.sum(Enum.map(purchases, & &1.credits_remaining))
+
+      if total_available < amount do
+        Repo.rollback(:insufficient_credits)
+      end
+
+      # Deduct FIFO
+      deduct_fifo(purchases, amount)
+
+      # Log the spend
+      %CreditSpend{}
+      |> CreditSpend.changeset(%{
+        billable_customer_id: customer.id,
+        amount: amount,
+        description: description,
+        reference_type: Keyword.get(opts, :reference_type),
+        reference_id: Keyword.get(opts, :reference_id)
+      })
+      |> Repo.insert!()
+
+      # Return new balance
+      total_available - amount
+    end)
+    |> case do
+      {:ok, new_balance} -> {:ok, new_balance}
+      {:error, :insufficient_credits} -> {:error, :insufficient_credits}
+      {:error, :no_customer} -> {:error, :no_customer}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Grants credits to an entity (admin function).
+
+  Creates a purchase record with the granted credits.
+
+  ## Options
+    - `:credits_expire_at` - When the credits expire
+    - `:product_slug` - Product slug to associate with (optional)
+  """
+  def grant_credits(entity, amount, reason, granted_by, opts \\ []) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity) do
+      attrs = %{
+        billable_customer_id: customer.id,
+        status: "completed",
+        credits_granted: amount,
+        credits_remaining: amount,
+        credits_expire_at: Keyword.get(opts, :credits_expire_at),
+        purchased_at: DateTime.utc_now(:second),
+        granted_by: granted_by,
+        grant_reason: reason
+      }
+
+      attrs =
+        case Keyword.get(opts, :product_slug) do
+          nil -> attrs
+          slug ->
+            product = Repo.get_by(<%= @app_module %>.Billing.Schemas.Product, slug: slug)
+            if product, do: Map.put(attrs, :product_id, product.id), else: attrs
+        end
+
+      %Purchase{}
+      |> Purchase.grant_changeset(attrs)
+      |> Repo.insert()
+    end
+  end
+
+  @doc """
+  Gets credit spend history for an entity.
+  """
+  def list_credit_spends(entity, opts \\ []) do
+    billable_type = entity.__struct__.billable_type()
+    billable_id = entity.__struct__.billable_id(entity)
+
+    limit = Keyword.get(opts, :limit, 50)
+
+    from(cs in CreditSpend,
+      join: c in BillableCustomer,
+      on: cs.billable_customer_id == c.id,
+      where: c.billable_type == ^billable_type,
+      where: c.billable_id == ^billable_id,
+      order_by: [desc: cs.inserted_at],
+      limit: ^limit
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets purchases with remaining credits for an entity.
+  """
+  def list_credit_purchases(entity) do
+    billable_type = entity.__struct__.billable_type()
+    billable_id = entity.__struct__.billable_id(entity)
+
+    now = DateTime.utc_now(:second)
+
+    from(p in Purchase,
+      join: c in BillableCustomer,
+      on: p.billable_customer_id == c.id,
+      where: c.billable_type == ^billable_type,
+      where: c.billable_id == ^billable_id,
+      where: p.status == "completed",
+      where: p.credits_granted > 0,
+      where: is_nil(p.credits_expire_at) or p.credits_expire_at > ^now,
+      order_by: [asc: p.purchased_at]
+    )
+    |> Repo.all()
+  end
+
+  # Deducts credits from purchases in FIFO order
+  defp deduct_fifo(purchases, amount) do
+    Enum.reduce_while(purchases, amount, fn purchase, remaining ->
+      if remaining <= 0 do
+        {:halt, 0}
+      else
+        deduct = min(remaining, purchase.credits_remaining)
+
+        purchase
+        |> Purchase.deduct_credits_changeset(deduct)
+        |> Repo.update!()
+
+        {:cont, remaining - deduct}
+      end
+    end)
+  end
+end

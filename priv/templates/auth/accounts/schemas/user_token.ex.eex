@@ -1,7 +1,7 @@
-defmodule <%= @app_module %>.Accounts.UserToken do
+defmodule <%= @app_module %>.Accounts.Schemas.UserToken do
   use Ecto.Schema
   import Ecto.Query
-  alias <%= @app_module %>.Accounts.UserToken
+  alias <%= @app_module %>.Accounts.Schemas.{User, UserToken}
 
   @hash_algorithm :sha256
   @rand_size 32
@@ -21,7 +21,7 @@ defmodule <%= @app_module %>.Accounts.UserToken do
     field :context, :string
     field :sent_to, :string
     field :authenticated_at, :utc_datetime
-    belongs_to :user, <%= @app_module %>.Accounts.User
+    belongs_to :user, User
 
     timestamps(type: :utc_datetime, updated_at: false)
   end

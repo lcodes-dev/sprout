@@ -1,0 +1,275 @@
+defmodule <%= @app_module %>.Billing.Paddle.WebhookHandler do
+  @moduledoc """
+  Processes Paddle webhook events.
+
+  Handles the following events:
+  - subscription.created - Creates new subscription record
+  - subscription.updated - Updates subscription status/dates
+  - subscription.canceled - Marks subscription as canceled
+  - subscription.paused - Marks subscription as paused
+  - subscription.resumed - Clears paused status
+  - transaction.completed - Creates purchase record, adds credits
+  - transaction.refunded - Revokes access, zeros credits
+
+  All handlers are idempotent - processing the same event twice is safe.
+  """
+
+  require Logger
+
+  alias <%= @app_module %>.Billing
+  alias <%= @app_module %>.Billing.{Customers, Subscriptions, Purchases, Credits}
+  alias <%= @app_module %>.Billing.Schemas.{Product, Subscription, Purchase}
+  alias <%= @app_module %>.Repo
+
+  @doc """
+  Processes a webhook event from Paddle.
+
+  Returns `:ok` on success, `{:error, reason}` on failure.
+  """
+  def handle_event(%{"event_type" => event_type, "data" => data}) do
+    Logger.info("Processing Paddle webhook: #{event_type}")
+
+    case event_type do
+      "subscription.created" -> handle_subscription_created(data)
+      "subscription.updated" -> handle_subscription_updated(data)
+      "subscription.canceled" -> handle_subscription_canceled(data)
+      "subscription.paused" -> handle_subscription_paused(data)
+      "subscription.resumed" -> handle_subscription_resumed(data)
+      "transaction.completed" -> handle_transaction_completed(data)
+      "transaction.refunded" -> handle_transaction_refunded(data)
+      _ ->
+        Logger.debug("Ignoring unhandled Paddle event: #{event_type}")
+        :ok
+    end
+  end
+
+  def handle_event(_), do: {:error, :invalid_event}
+
+  # Subscription Events
+
+  defp handle_subscription_created(data) do
+    paddle_subscription_id = data["id"]
+    paddle_customer_id = data["customer_id"]
+
+    with {:ok, customer} <- Customers.get_or_create_by_paddle_id(paddle_customer_id),
+         nil <- Subscriptions.get_by_paddle_id(paddle_subscription_id) do
+      attrs = %{
+        billable_customer_id: customer.id,
+        paddle_subscription_id: paddle_subscription_id,
+        paddle_price_id: get_price_id(data),
+        product_id: get_product_id(data),
+        status: normalize_status(data["status"]),
+        quantity: get_quantity(data),
+        current_period_start: parse_datetime(data["current_billing_period"]["starts_at"]),
+        current_period_end: parse_datetime(data["current_billing_period"]["ends_at"]),
+        trial_ends_at: parse_datetime(data["scheduled_change"]["effective_at"])
+      }
+
+      case Subscriptions.create_from_paddle(attrs) do
+        {:ok, _subscription} -> :ok
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      %Subscription{} ->
+        Logger.debug("Subscription already exists: #{paddle_subscription_id}")
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp handle_subscription_updated(data) do
+    paddle_subscription_id = data["id"]
+
+    case Subscriptions.get_by_paddle_id(paddle_subscription_id) do
+      nil ->
+        Logger.warning("Subscription not found for update: #{paddle_subscription_id}")
+        handle_subscription_created(data)
+
+      subscription ->
+        attrs = %{
+          status: normalize_status(data["status"]),
+          current_period_start: parse_datetime(data["current_billing_period"]["starts_at"]),
+          current_period_end: parse_datetime(data["current_billing_period"]["ends_at"])
+        }
+
+        case Subscriptions.update_status(subscription, attrs) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  defp handle_subscription_canceled(data) do
+    paddle_subscription_id = data["id"]
+
+    case Subscriptions.get_by_paddle_id(paddle_subscription_id) do
+      nil ->
+        Logger.warning("Subscription not found for cancellation: #{paddle_subscription_id}")
+        :ok
+
+      subscription ->
+        attrs = %{
+          status: "canceled",
+          canceled_at: parse_datetime(data["canceled_at"]) || DateTime.utc_now(:second),
+          ends_at: parse_datetime(data["scheduled_change"]["effective_at"])
+        }
+
+        case Subscriptions.update_status(subscription, attrs) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  defp handle_subscription_paused(data) do
+    paddle_subscription_id = data["id"]
+
+    case Subscriptions.get_by_paddle_id(paddle_subscription_id) do
+      nil ->
+        Logger.warning("Subscription not found for pause: #{paddle_subscription_id}")
+        :ok
+
+      subscription ->
+        attrs = %{
+          status: "paused",
+          paused_at: parse_datetime(data["paused_at"]) || DateTime.utc_now(:second)
+        }
+
+        case Subscriptions.update_status(subscription, attrs) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  defp handle_subscription_resumed(data) do
+    paddle_subscription_id = data["id"]
+
+    case Subscriptions.get_by_paddle_id(paddle_subscription_id) do
+      nil ->
+        Logger.warning("Subscription not found for resume: #{paddle_subscription_id}")
+        :ok
+
+      subscription ->
+        attrs = %{
+          status: normalize_status(data["status"]),
+          paused_at: nil
+        }
+
+        case Subscriptions.update_status(subscription, attrs) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  # Transaction Events
+
+  defp handle_transaction_completed(data) do
+    paddle_transaction_id = data["id"]
+    paddle_customer_id = data["customer_id"]
+
+    # Check if this transaction is for a subscription (already handled)
+    if subscription_transaction?(data) do
+      Logger.debug("Ignoring subscription transaction: #{paddle_transaction_id}")
+      :ok
+    else
+      with {:ok, customer} <- Customers.get_or_create_by_paddle_id(paddle_customer_id),
+           nil <- Purchases.get_by_paddle_id(paddle_transaction_id) do
+        product = get_product_from_transaction(data)
+
+        credits = if product && product.type == "credits" do
+          Product.credits_amount(product)
+        else
+          0
+        end
+
+        attrs = %{
+          billable_customer_id: customer.id,
+          paddle_transaction_id: paddle_transaction_id,
+          product_id: product && product.id,
+          status: "completed",
+          credits_granted: credits,
+          credits_remaining: credits,
+          purchased_at: parse_datetime(data["created_at"]) || DateTime.utc_now(:second)
+        }
+
+        case Purchases.create_from_paddle(attrs) do
+          {:ok, _purchase} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+      else
+        %Purchase{} ->
+          Logger.debug("Purchase already exists: #{paddle_transaction_id}")
+          :ok
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  defp handle_transaction_refunded(data) do
+    paddle_transaction_id = data["id"]
+
+    case Purchases.get_by_paddle_id(paddle_transaction_id) do
+      nil ->
+        Logger.warning("Purchase not found for refund: #{paddle_transaction_id}")
+        :ok
+
+      purchase ->
+        case Purchases.refund(purchase) do
+          {:ok, _} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  # Helpers
+
+  defp normalize_status("active"), do: "active"
+  defp normalize_status("trialing"), do: "trialing"
+  defp normalize_status("past_due"), do: "past_due"
+  defp normalize_status("paused"), do: "paused"
+  defp normalize_status("canceled"), do: "canceled"
+  defp normalize_status(status), do: status
+
+  defp parse_datetime(nil), do: nil
+
+  defp parse_datetime(datetime_string) when is_binary(datetime_string) do
+    case DateTime.from_iso8601(datetime_string) do
+      {:ok, datetime, _offset} -> DateTime.truncate(datetime, :second)
+      _ -> nil
+    end
+  end
+
+  defp get_price_id(%{"items" => [%{"price" => %{"id" => price_id}} | _]}), do: price_id
+  defp get_price_id(%{"items" => [%{"price_id" => price_id} | _]}), do: price_id
+  defp get_price_id(_), do: nil
+
+  defp get_quantity(%{"items" => [%{"quantity" => quantity} | _]}), do: quantity
+  defp get_quantity(_), do: 1
+
+  defp get_product_id(data) do
+    case get_price_id(data) do
+      nil -> nil
+      price_id ->
+        case Repo.get_by(Product, paddle_price_id: price_id) do
+          nil -> nil
+          product -> product.id
+        end
+    end
+  end
+
+  defp get_product_from_transaction(data) do
+    case get_price_id(data) do
+      nil -> nil
+      price_id -> Repo.get_by(Product, paddle_price_id: price_id)
+    end
+  end
+
+  defp subscription_transaction?(%{"subscription_id" => sub_id}) when is_binary(sub_id), do: true
+  defp subscription_transaction?(_), do: false
+end

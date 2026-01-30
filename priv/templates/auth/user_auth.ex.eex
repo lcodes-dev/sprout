@@ -5,7 +5,7 @@ defmodule <%= @web_module %>.UserAuth do
   import Phoenix.Controller
 
   alias <%= @app_module %>.Accounts
-  alias <%= @app_module %>.Accounts.Scope
+  alias <%= @app_module %>.Accounts.Schemas.{Scope, UserToken}
 
   # Make the remember me cookie valid for 365 days
   @remember_me_cookie_max_age_in_days 365
@@ -21,7 +21,7 @@ defmodule <%= @web_module %>.UserAuth do
   # and the session and remember-me cookies (if set) will be updated with the new token.
   # Set to half the session validity to ensure active users get refreshed tokens
   defp session_reissue_age_in_days do
-    max(1, div(Accounts.UserToken.session_validity_in_days(), 2))
+    max(1, div(UserToken.session_validity_in_days(), 2))
   end
 
   @doc """

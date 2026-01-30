@@ -1,0 +1,48 @@
+defmodule <%= @web_module %>.Plugs.RequireCredits do
+  @moduledoc """
+  Plug that requires a minimum credit balance.
+
+  ## Usage
+
+      plug <%= @web_module %>.Plugs.RequireCredits, minimum: 10
+
+  ## Options
+
+    - `:minimum` - Minimum credit balance required (default: 1)
+    - `:redirect_to` - Path to redirect to if insufficient credits (default: "/billing")
+    - `:message` - Flash message to show (default: "You need more credits to access this feature.")
+  """
+
+  import Plug.Conn
+  import Phoenix.Controller
+
+  alias <%= @app_module %>.Billing
+
+  def init(opts), do: opts
+
+  def call(conn, opts) do
+    minimum = Keyword.get(opts, :minimum, 1)
+    redirect_to = Keyword.get(opts, :redirect_to, "/billing")
+    message = Keyword.get(opts, :message, "You need more credits to access this feature.")
+
+    user = get_user(conn)
+    balance = if user, do: Billing.get_credit_balance(user), else: 0
+
+    if balance >= minimum do
+      conn
+      |> assign(:credit_balance, balance)
+    else
+      conn
+      |> put_flash(:error, message)
+      |> redirect(to: redirect_to)
+      |> halt()
+    end
+  end
+
+  defp get_user(conn) do
+    case conn.assigns[:current_scope] do
+      %{user: user} -> user
+      _ -> nil
+    end
+  end
+end

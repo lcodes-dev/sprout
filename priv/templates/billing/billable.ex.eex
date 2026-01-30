@@ -1,0 +1,72 @@
+defmodule <%= @app_module %>.Billing.Billable do
+  @moduledoc """
+  Behaviour for billable entities.
+
+  Any schema that implements this behaviour can be used as a billable entity
+  (e.g., User, Organization). The behaviour defines how to:
+  - Get the billable type string (e.g., "user", "organization")
+  - Get the billable ID
+  - Get the email for Paddle customer creation
+
+  ## Example Implementation
+
+      defmodule MyApp.Accounts.Schemas.User do
+        use Ecto.Schema
+        @behaviour MyApp.Billing.Billable
+
+        @impl true
+        def billable_type, do: "user"
+
+        @impl true
+        def billable_id(%__MODULE__{id: id}), do: id
+
+        @impl true
+        def billable_email(%__MODULE__{email: email}), do: email
+      end
+  """
+
+  @doc """
+  Returns the billable type string for this entity type.
+  """
+  @callback billable_type() :: String.t()
+
+  @doc """
+  Returns the billable ID for a specific entity instance.
+  """
+  @callback billable_id(entity :: struct()) :: integer()
+
+  @doc """
+  Returns the email address for a specific entity instance.
+  Used when creating a Paddle customer.
+  """
+  @callback billable_email(entity :: struct()) :: String.t()
+
+  @doc """
+  Optional callback for getting the entity name for Paddle.
+  """
+  @callback billable_name(entity :: struct()) :: String.t() | nil
+
+  @optional_callbacks [billable_name: 1]
+
+  @doc """
+  Gets the billable module for a given type string.
+
+  Looks up the configured billable_types to find the matching module.
+  """
+  def module_for_type(type) do
+    billable_types = config()[:billable_types] || []
+    Keyword.get(billable_types, String.to_existing_atom(type))
+  end
+
+  @doc """
+  Gets all configured billable types.
+  """
+  def all_types do
+    billable_types = config()[:billable_types] || []
+    Keyword.keys(billable_types)
+  end
+
+  defp config do
+    Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing) || []
+  end
+end

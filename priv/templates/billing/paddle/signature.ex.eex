@@ -1,0 +1,121 @@
+defmodule <%= @app_module %>.Billing.Paddle.Signature do
+  @moduledoc """
+  Verifies Paddle webhook signatures.
+
+  Paddle signs all webhook payloads using HMAC-SHA256. This module verifies
+  those signatures to ensure webhooks are authentic.
+
+  See: https://developer.paddle.com/webhooks/signature-verification
+  """
+
+  require Logger
+
+  @doc """
+  Verifies the webhook signature from Paddle.
+
+  Returns `{:ok, payload}` if valid, `{:error, reason}` otherwise.
+
+  ## Parameters
+    - raw_body: The raw request body as a string
+    - paddle_signature: The value of the `Paddle-Signature` header
+
+  ## Signature Format
+  The Paddle-Signature header contains:
+  - ts: timestamp
+  - h1: HMAC signature
+
+  Example: "ts=1234567890;h1=abc123..."
+  """
+  def verify(raw_body, paddle_signature) do
+    with {:ok, %{ts: ts, h1: signature}} <- parse_signature(paddle_signature),
+         :ok <- verify_timestamp(ts),
+         :ok <- verify_hmac(raw_body, ts, signature) do
+      {:ok, Jason.decode!(raw_body)}
+    end
+  end
+
+  @doc """
+  Parses the Paddle-Signature header into components.
+  """
+  def parse_signature(nil), do: {:error, :missing_signature}
+
+  def parse_signature(signature) when is_binary(signature) do
+    parts =
+      signature
+      |> String.split(";")
+      |> Enum.reduce(%{}, fn part, acc ->
+        case String.split(part, "=", parts: 2) do
+          [key, value] -> Map.put(acc, String.to_atom(key), value)
+          _ -> acc
+        end
+      end)
+
+    case parts do
+      %{ts: ts, h1: h1} -> {:ok, %{ts: ts, h1: h1}}
+      _ -> {:error, :invalid_signature_format}
+    end
+  end
+
+  @doc """
+  Verifies the timestamp is within acceptable range (5 minutes).
+  """
+  def verify_timestamp(ts) when is_binary(ts) do
+    case Integer.parse(ts) do
+      {timestamp, ""} ->
+        now = System.system_time(:second)
+        diff = abs(now - timestamp)
+
+        # Allow 5 minutes of clock drift
+        if diff <= 300 do
+          :ok
+        else
+          Logger.warning("Paddle webhook timestamp too old: #{diff} seconds")
+          {:error, :timestamp_too_old}
+        end
+
+      _ ->
+        {:error, :invalid_timestamp}
+    end
+  end
+
+  @doc """
+  Verifies the HMAC signature.
+  """
+  def verify_hmac(raw_body, ts, signature) do
+    secret = webhook_secret()
+    signed_payload = "#{ts}:#{raw_body}"
+
+    expected =
+      :crypto.mac(:hmac, :sha256, secret, signed_payload)
+      |> Base.encode16(case: :lower)
+
+    if secure_compare(expected, signature) do
+      :ok
+    else
+      Logger.warning("Paddle webhook signature mismatch")
+      {:error, :invalid_signature}
+    end
+  end
+
+  # Constant-time comparison to prevent timing attacks
+  defp secure_compare(a, b) when byte_size(a) != byte_size(b), do: false
+
+  defp secure_compare(a, b) do
+    a_bytes = :binary.bin_to_list(a)
+    b_bytes = :binary.bin_to_list(b)
+
+    result =
+      Enum.zip(a_bytes, b_bytes)
+      |> Enum.reduce(0, fn {x, y}, acc -> Bitwise.bor(acc, Bitwise.bxor(x, y)) end)
+
+    result == 0
+  end
+
+  defp webhook_secret do
+    config()[:webhook_secret] || raise "Paddle webhook secret not configured"
+  end
+
+  defp config do
+    Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing)[:paddle] || []
+  end
+end

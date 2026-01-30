@@ -1,0 +1,17 @@
+defmodule <%= @web_module %>.Plugs.PaddleWebhook do
+  @moduledoc """
+  Plug to cache the raw request body for Paddle webhook signature verification.
+
+  Paddle webhooks need the raw body to verify the HMAC signature.
+  This plug reads and caches the raw body before JSON parsing.
+  """
+
+  import Plug.Conn
+
+  def init(opts), do: opts
+
+  def call(conn, _opts) do
+    {:ok, body, conn} = read_body(conn)
+    assign(conn, :raw_body, body)
+  end
+end

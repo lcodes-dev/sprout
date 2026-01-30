@@ -1,0 +1,186 @@
+defmodule <%= @app_module %>.Billing.Subscriptions do
+  @moduledoc """
+  Subscription management.
+
+  Provides functions for checking subscription status, creating/managing
+  subscriptions through Paddle, and granting free subscriptions.
+  """
+
+  import Ecto.Query
+
+  alias <%= @app_module %>.Repo
+  alias <%= @app_module %>.Billing.Customers
+  alias <%= @app_module %>.Billing.Schemas.{BillableCustomer, Subscription, Product}
+  alias <%= @app_module %>.Billing.Paddle.Client
+
+  @doc """
+  Checks if the entity has an active subscription with the given name.
+
+  This is the primary access check - queries local DB for fast response.
+  """
+  def subscribed?(entity, name \\ "default") do
+    case get_subscription(entity, name) do
+      nil -> false
+      subscription -> Subscription.has_access?(subscription)
+    end
+  end
+
+  @doc """
+  Gets the subscription for an entity by name.
+  """
+  def get_subscription(entity, name \\ "default") do
+    billable_type = entity.__struct__.billable_type()
+    billable_id = entity.__struct__.billable_id(entity)
+
+    from(s in Subscription,
+      join: c in BillableCustomer,
+      on: s.billable_customer_id == c.id,
+      where: c.billable_type == ^billable_type,
+      where: c.billable_id == ^billable_id,
+      where: s.name == ^name,
+      order_by: [desc: s.inserted_at],
+      limit: 1
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  Gets all subscriptions for an entity.
+  """
+  def list_subscriptions(entity) do
+    billable_type = entity.__struct__.billable_type()
+    billable_id = entity.__struct__.billable_id(entity)
+
+    from(s in Subscription,
+      join: c in BillableCustomer,
+      on: s.billable_customer_id == c.id,
+      where: c.billable_type == ^billable_type,
+      where: c.billable_id == ^billable_id,
+      order_by: [desc: s.inserted_at],
+      preload: [:product]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets a subscription by Paddle subscription ID.
+  """
+  def get_by_paddle_id(paddle_subscription_id) do
+    Repo.get_by(Subscription, paddle_subscription_id: paddle_subscription_id)
+  end
+
+  @doc """
+  Creates a subscription from a Paddle webhook event.
+  """
+  def create_from_paddle(attrs) do
+    %Subscription{}
+    |> Subscription.paddle_changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates a subscription's status (from webhook).
+  """
+  def update_status(subscription, attrs) do
+    subscription
+    |> Subscription.status_changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Grants a free subscription to an entity.
+
+  ## Options
+    - `:name` - Subscription name (default: "default")
+    - `:ends_at` - When the subscription ends (nil for indefinite)
+    - `:grant_reason` - Reason for the grant
+  """
+  def grant_subscription(entity, product_slug, granted_by, opts \\ []) do
+    allow_multiple? = config()[:allow_multiple_subscriptions] || false
+    name = Keyword.get(opts, :name, "default")
+
+    # Check for existing subscription if multiple not allowed
+    if !allow_multiple? && get_subscription(entity, name) do
+      {:error, :subscription_exists}
+    else
+      with {:ok, customer} <- Customers.get_or_create_customer(entity),
+           product <- get_product_by_slug(product_slug) do
+        attrs = %{
+          billable_customer_id: customer.id,
+          product_id: product && product.id,
+          name: name,
+          status: "active",
+          ends_at: Keyword.get(opts, :ends_at),
+          granted_by: granted_by,
+          grant_reason: Keyword.get(opts, :grant_reason)
+        }
+
+        %Subscription{}
+        |> Subscription.grant_changeset(attrs)
+        |> Repo.insert()
+      end
+    end
+  end
+
+  @doc """
+  Cancels a subscription at the end of the current billing period.
+
+  For Paddle subscriptions, this calls the Paddle API.
+  For granted subscriptions, this updates the local record.
+  """
+  def cancel_subscription(subscription, opts \\ []) do
+    if subscription.paddle_subscription_id do
+      case Client.cancel_subscription(subscription.paddle_subscription_id, opts) do
+        {:ok, _} -> {:ok, subscription}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      # Granted subscription - just mark as canceled
+      update_status(subscription, %{
+        status: "canceled",
+        canceled_at: DateTime.utc_now(:second)
+      })
+    end
+  end
+
+  @doc """
+  Pauses a subscription.
+  """
+  def pause_subscription(subscription, opts \\ []) do
+    if subscription.paddle_subscription_id do
+      case Client.pause_subscription(subscription.paddle_subscription_id, opts) do
+        {:ok, _} -> {:ok, subscription}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      update_status(subscription, %{
+        status: "paused",
+        paused_at: DateTime.utc_now(:second)
+      })
+    end
+  end
+
+  @doc """
+  Resumes a paused subscription.
+  """
+  def resume_subscription(subscription, opts \\ []) do
+    if subscription.paddle_subscription_id do
+      case Client.resume_subscription(subscription.paddle_subscription_id, opts) do
+        {:ok, _} -> {:ok, subscription}
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      update_status(subscription, %{
+        status: "active",
+        paused_at: nil
+      })
+    end
+  end
+
+  defp get_product_by_slug(nil), do: nil
+  defp get_product_by_slug(slug), do: Repo.get_by(Product, slug: slug)
+
+  defp config do
+    Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing) || []
+  end
+end

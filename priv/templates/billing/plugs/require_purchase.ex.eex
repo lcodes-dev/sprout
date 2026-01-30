@@ -1,0 +1,52 @@
+defmodule <%= @web_module %>.Plugs.RequirePurchase do
+  @moduledoc """
+  Plug that requires a specific product purchase.
+
+  ## Usage
+
+      plug <%= @web_module %>.Plugs.RequirePurchase, product: "course-elixir"
+
+  ## Options
+
+    - `:product` - The product slug to check (required)
+    - `:redirect_to` - Path to redirect to if not purchased (default: "/billing")
+    - `:message` - Flash message to show (default: "You need to purchase this product to access this page.")
+  """
+
+  import Plug.Conn
+  import Phoenix.Controller
+
+  alias <%= @app_module %>.Billing
+
+  def init(opts) do
+    unless Keyword.has_key?(opts, :product) do
+      raise ArgumentError, "RequirePurchase plug requires :product option"
+    end
+
+    opts
+  end
+
+  def call(conn, opts) do
+    product = Keyword.fetch!(opts, :product)
+    redirect_to = Keyword.get(opts, :redirect_to, "/billing")
+    message = Keyword.get(opts, :message, "You need to purchase this product to access this page.")
+
+    user = get_user(conn)
+
+    if user && Billing.has_purchased?(user, product) do
+      conn
+    else
+      conn
+      |> put_flash(:error, message)
+      |> redirect(to: redirect_to)
+      |> halt()
+    end
+  end
+
+  defp get_user(conn) do
+    case conn.assigns[:current_scope] do
+      %{user: user} -> user
+      _ -> nil
+    end
+  end
+end

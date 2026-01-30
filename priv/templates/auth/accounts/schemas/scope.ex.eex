@@ -1,4 +1,4 @@
-defmodule <%= @app_module %>.Accounts.Scope do
+defmodule <%= @app_module %>.Accounts.Schemas.Scope do
   @moduledoc """
   Defines a scope struct to represent the current user.
 
@@ -6,12 +6,14 @@ defmodule <%= @app_module %>.Accounts.Scope do
   and ensure data is properly scoped to the current user.
   """
 
+  alias <%= @app_module %>.Accounts.Schemas.User
+
   defstruct [:user]
 
   @doc """
   Creates a scope for the given user.
   """
-  def for_user(%<%= @app_module %>.Accounts.User{} = user) do
+  def for_user(%User{} = user) do
     %__MODULE__{user: user}
   end
 

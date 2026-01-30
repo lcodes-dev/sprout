@@ -1,0 +1,9 @@
+defmodule <%= @web_module %>.BillingHTML do
+  @moduledoc """
+  HTML views for billing pages.
+  """
+
+  use <%= @web_module %>, :html
+
+  embed_templates "html/*"
+end

@@ -1,0 +1,232 @@
+defmodule <%= @app_module %>.BillingTest do
+  use <%= @app_module %>.DataCase, async: true
+
+  alias <%= @app_module %>.Billing
+  alias <%= @app_module %>.Billing.Schemas.{Subscription, Purchase}
+
+  import <%= @app_module %>.AccountsFixtures
+  import <%= @app_module %>.BillingFixtures
+
+  describe "customers" do
+    test "get_or_create_customer/1 creates a new customer" do
+      user = user_fixture()
+
+      assert {:ok, customer} = Billing.get_or_create_customer(user)
+      assert customer.billable_type == "user"
+      assert customer.billable_id == user.id
+    end
+
+    test "get_or_create_customer/1 returns existing customer" do
+      user = user_fixture()
+      existing = billable_customer_fixture(user)
+
+      assert {:ok, customer} = Billing.get_or_create_customer(user)
+      assert customer.id == existing.id
+    end
+  end
+
+  describe "subscriptions" do
+    test "subscribed?/2 returns false when no subscription" do
+      user = user_fixture()
+
+      refute Billing.subscribed?(user)
+      refute Billing.subscribed?(user, "pro")
+    end
+
+    test "subscribed?/2 returns true with active subscription" do
+      user = user_fixture()
+      _subscription = subscription_fixture(user, %{status: "active"})
+
+      assert Billing.subscribed?(user)
+    end
+
+    test "subscribed?/2 returns true with trialing subscription" do
+      user = user_fixture()
+      _subscription = subscription_fixture(user, %{status: "trialing"})
+
+      assert Billing.subscribed?(user)
+    end
+
+    test "subscribed?/2 returns false with canceled subscription past end date" do
+      user = user_fixture()
+      past_date = DateTime.add(DateTime.utc_now(), -1, :day)
+
+      _subscription = subscription_fixture(user, %{
+        status: "canceled",
+        ends_at: past_date
+      })
+
+      refute Billing.subscribed?(user)
+    end
+
+    test "subscribed?/2 returns true with canceled subscription in grace period" do
+      user = user_fixture()
+      future_date = DateTime.add(DateTime.utc_now(), 7, :day)
+
+      _subscription = subscription_fixture(user, %{
+        status: "canceled",
+        ends_at: future_date
+      })
+
+      assert Billing.subscribed?(user)
+    end
+
+    test "subscription/2 returns the subscription" do
+      user = user_fixture()
+      sub = subscription_fixture(user)
+
+      assert subscription = Billing.subscription(user)
+      assert subscription.id == sub.id
+    end
+
+    test "subscription/2 returns nil when no subscription" do
+      user = user_fixture()
+
+      assert Billing.subscription(user) == nil
+    end
+
+    test "grant_subscription/4 creates a granted subscription" do
+      user = user_fixture()
+      admin = user_fixture()
+      product = subscription_product_fixture(%{slug: "pro"})
+
+      assert {:ok, subscription} = Billing.grant_subscription(user, "pro", admin.id, grant_reason: "Beta tester")
+
+      assert subscription.status == "active"
+      assert subscription.granted_by == admin.id
+      assert subscription.grant_reason == "Beta tester"
+      assert subscription.product_id == product.id
+    end
+  end
+
+  describe "purchases" do
+    test "has_purchased?/2 returns false when no purchase" do
+      user = user_fixture()
+
+      refute Billing.has_purchased?(user, "course-elixir")
+    end
+
+    test "has_purchased?/2 returns true with completed purchase" do
+      user = user_fixture()
+      product = one_time_product_fixture(%{slug: "course-elixir"})
+      _purchase = purchase_fixture(user, %{product: product, status: "completed"})
+
+      assert Billing.has_purchased?(user, "course-elixir")
+    end
+
+    test "has_purchased?/2 returns false with refunded purchase" do
+      user = user_fixture()
+      product = one_time_product_fixture(%{slug: "course-elixir"})
+      _purchase = purchase_fixture(user, %{product: product, status: "refunded"})
+
+      refute Billing.has_purchased?(user, "course-elixir")
+    end
+
+    test "grant_purchase/4 creates a granted purchase" do
+      user = user_fixture()
+      admin = user_fixture()
+      product = one_time_product_fixture(%{slug: "course-elixir"})
+
+      assert {:ok, purchase} = Billing.grant_purchase(user, "course-elixir", admin.id, grant_reason: "Contest winner")
+
+      assert purchase.status == "completed"
+      assert purchase.granted_by == admin.id
+      assert purchase.grant_reason == "Contest winner"
+      assert purchase.product_id == product.id
+    end
+  end
+
+  describe "credits" do
+    test "get_credit_balance/1 returns 0 when no credits" do
+      user = user_fixture()
+
+      assert Billing.get_credit_balance(user) == 0
+    end
+
+    test "get_credit_balance/1 returns sum of remaining credits" do
+      user = user_fixture()
+      _purchase1 = credit_purchase_fixture(user, 100)
+      _purchase2 = credit_purchase_fixture(user, 50)
+
+      assert Billing.get_credit_balance(user) == 150
+    end
+
+    test "get_credit_balance/1 excludes expired credits" do
+      user = user_fixture()
+      past_date = DateTime.add(DateTime.utc_now(), -1, :day)
+
+      _active = credit_purchase_fixture(user, 100)
+      _expired = credit_purchase_fixture(user, 50, %{credits_expire_at: past_date})
+
+      assert Billing.get_credit_balance(user) == 100
+    end
+
+    test "spend_credits/4 deducts credits" do
+      user = user_fixture()
+      _purchase = credit_purchase_fixture(user, 100)
+
+      assert {:ok, new_balance} = Billing.spend_credits(user, 30, "Test spend")
+      assert new_balance == 70
+      assert Billing.get_credit_balance(user) == 70
+    end
+
+    test "spend_credits/4 uses FIFO order" do
+      user = user_fixture()
+      _old_purchase = credit_purchase_fixture(user, 50)
+      :timer.sleep(10)
+      _new_purchase = credit_purchase_fixture(user, 50)
+
+      # Spend 60, should use all 50 from old + 10 from new
+      assert {:ok, 40} = Billing.spend_credits(user, 60, "Big spend")
+
+      # Check the remaining credits are from the new purchase
+      [purchase | _] = Billing.list_credit_purchases(user)
+      assert purchase.credits_remaining == 40
+    end
+
+    test "spend_credits/4 returns error when insufficient" do
+      user = user_fixture()
+      _purchase = credit_purchase_fixture(user, 50)
+
+      assert {:error, :insufficient_credits} = Billing.spend_credits(user, 100, "Too much")
+      assert Billing.get_credit_balance(user) == 50
+    end
+
+    test "grant_credits/5 creates a purchase with credits" do
+      user = user_fixture()
+      admin = user_fixture()
+
+      assert {:ok, purchase} = Billing.grant_credits(user, 100, "Welcome bonus", admin.id)
+
+      assert purchase.credits_granted == 100
+      assert purchase.credits_remaining == 100
+      assert purchase.granted_by == admin.id
+      assert Billing.get_credit_balance(user) == 100
+    end
+  end
+
+  describe "products" do
+    test "get_product_by_slug/1 returns product" do
+      product = product_fixture(%{slug: "test-product"})
+
+      assert found = Billing.get_product_by_slug("test-product")
+      assert found.id == product.id
+    end
+
+    test "list_products/0 returns active products" do
+      _active = product_fixture(%{active: true})
+      _inactive = product_fixture(%{active: false})
+
+      products = Billing.list_products()
+      assert length(products) == 1
+    end
+
+    test "list_products_by_type/1 filters by type" do
+      _sub = product_fixture(%{type: "subscription"})
+      _credits = product_fixture(%{type: "credits"})
+
+      subscriptions = Billing.list_products_by_type("subscription")
+      assert length(subscriptions) == 1
+    end
+  end
+end

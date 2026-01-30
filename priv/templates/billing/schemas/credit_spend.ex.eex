@@ -1,0 +1,36 @@
+defmodule <%= @app_module %>.Billing.Schemas.CreditSpend do
+  @moduledoc """
+  Logs credit spending for audit purposes.
+
+  Each spend record tracks:
+  - How many credits were spent
+  - What they were spent on (description + reference)
+  - When they were spent
+
+  This provides a full audit trail of all credit usage.
+  """
+
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  alias <%= @app_module %>.Billing.Schemas.BillableCustomer
+
+  schema "credit_spends" do
+    field :amount, :integer
+    field :description, :string
+    field :reference_type, :string
+    field :reference_id, :integer
+
+    belongs_to :billable_customer, BillableCustomer
+
+    timestamps(type: :utc_datetime, updated_at: false)
+  end
+
+  @doc false
+  def changeset(credit_spend, attrs) do
+    credit_spend
+    |> cast(attrs, [:billable_customer_id, :amount, :description, :reference_type, :reference_id])
+    |> validate_required([:billable_customer_id, :amount])
+    |> validate_number(:amount, greater_than: 0)
+  end
+end

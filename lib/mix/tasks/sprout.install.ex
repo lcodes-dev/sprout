@@ -12,6 +12,7 @@ defmodule Mix.Tasks.Sprout.Install do
 
   - `--examples` - Include example Turbo controller demonstrating all features
   - `--no-auth` - Skip user authentication (auth is included by default)
+  - `--payments` - Include Paddle Billing integration for subscriptions, purchases, and credits
 
   ## What Gets Installed
 
@@ -31,6 +32,12 @@ defmodule Mix.Tasks.Sprout.Install do
   - HTML email templates
   - Dashboard layout with user menu
 
+  With payments (--payments):
+  - Paddle Billing integration
+  - Subscription management
+  - One-time purchases with gated access
+  - Credit/token system
+
   After installation, run:
 
   ```bash
@@ -45,17 +52,20 @@ defmodule Mix.Tasks.Sprout.Install do
   def info(_argv, _composing_task) do
     %Igniter.Mix.Task.Info{
       group: :sprout,
-      example: "mix sprout.install --examples",
+      example: "mix sprout.install --examples --payments",
       schema: [
         examples: :boolean,
-        auth: :boolean
+        auth: :boolean,
+        payments: :boolean
       ],
       defaults: [
         examples: false,
-        auth: true
+        auth: true,
+        payments: false
       ],
       aliases: [
-        e: :examples
+        e: :examples,
+        p: :payments
       ],
       adds_deps: [
         {:bcrypt_elixir, "~> 3.0"}
@@ -68,6 +78,7 @@ defmodule Mix.Tasks.Sprout.Install do
     options = igniter.args.options
     include_examples? = Keyword.get(options, :examples, false)
     include_auth? = Keyword.get(options, :auth, true)
+    include_payments? = Keyword.get(options, :payments, false)
 
     # Get app name from Mix project config (most reliable source)
     app_name = Mix.Project.config()[:app] |> to_string()
@@ -92,6 +103,7 @@ defmodule Mix.Tasks.Sprout.Install do
 
     Installing Hotwire Turbo, Alpine.js, and BasecoatUI...
     #{if include_auth?, do: "Including user authentication...", else: ""}
+    #{if include_payments?, do: "Including Paddle payments integration...", else: ""}
     """)
     # Create agent instruction files
     |> create_agents_md(assigns)
@@ -125,10 +137,12 @@ defmodule Mix.Tasks.Sprout.Install do
     |> maybe_add_examples(include_examples?, assigns)
     # Optional: Add authentication
     |> maybe_add_auth(include_auth?, assigns)
-    |> add_final_notice(include_examples?, include_auth?)
+    # Optional: Add payments (requires auth)
+    |> maybe_add_payments(include_payments? and include_auth?, assigns)
+    |> add_final_notice(include_examples?, include_auth?, include_payments?)
   end
 
-  defp add_final_notice(igniter, include_examples?, include_auth?) do
+  defp add_final_notice(igniter, include_examples?, include_auth?, include_payments?) do
     Igniter.add_notice(igniter, """
 
     ✅ Sprout installed successfully!
@@ -138,6 +152,7 @@ defmodule Mix.Tasks.Sprout.Install do
     #{if include_auth?, do: "2. Run `mix ecto.migrate` to create database tables", else: ""}
     #{if include_auth?, do: "3. Restart your Phoenix server", else: "2. Restart your Phoenix server"}
     #{if include_examples?, do: "#{if include_auth?, do: "4", else: "3"}. Visit /turbo-example to see Turbo in action", else: ""}
+    #{if include_payments?, do: "\n    For payments setup:\n    - Set PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, and PADDLE_CLIENT_TOKEN environment variables\n    - Configure products in the database\n    - Visit /billing to see the billing dashboard", else: ""}
 
     Optional cleanup:
     - Remove empty folder: rm -rf lib/*_web/controllers/page_html
@@ -673,20 +688,20 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp create_user_schema(igniter, assigns) do
-    path = "#{assigns[:app_path]}/accounts/user.ex"
-    content = render_template("auth/accounts/user.ex.eex", assigns)
+    path = "#{assigns[:app_path]}/accounts/schemas/user.ex"
+    content = render_template("auth/accounts/schemas/user.ex.eex", assigns)
     Igniter.create_new_file(igniter, path, content, on_exists: :skip)
   end
 
   defp create_user_token_schema(igniter, assigns) do
-    path = "#{assigns[:app_path]}/accounts/user_token.ex"
-    content = render_template("auth/accounts/user_token.ex.eex", assigns)
+    path = "#{assigns[:app_path]}/accounts/schemas/user_token.ex"
+    content = render_template("auth/accounts/schemas/user_token.ex.eex", assigns)
     Igniter.create_new_file(igniter, path, content, on_exists: :skip)
   end
 
   defp create_scope_module(igniter, assigns) do
-    path = "#{assigns[:app_path]}/accounts/scope.ex"
-    content = render_template("auth/accounts/scope.ex.eex", assigns)
+    path = "#{assigns[:app_path]}/accounts/schemas/scope.ex"
+    content = render_template("auth/accounts/schemas/scope.ex.eex", assigns)
     Igniter.create_new_file(igniter, path, content, on_exists: :skip)
   end
 
@@ -921,5 +936,229 @@ defmodule Mix.Tasks.Sprout.Install do
     else
       igniter
     end
+  end
+
+  # ============================================================================
+  # Payments (--payments)
+  # ============================================================================
+
+  defp maybe_add_payments(igniter, false, _assigns), do: igniter
+
+  defp maybe_add_payments(igniter, true, assigns) do
+    igniter
+    |> add_req_dependency()
+    |> create_billing_context(assigns)
+    |> create_billing_schemas(assigns)
+    |> create_paddle_modules(assigns)
+    |> create_billing_controllers(assigns)
+    |> create_billing_plugs(assigns)
+    |> create_billing_migration(assigns)
+    |> create_billing_tests(assigns)
+    |> update_user_schema_for_billing(assigns)
+    |> update_router_for_payments(assigns)
+    |> add_payments_config(assigns)
+  end
+
+  defp add_req_dependency(igniter) do
+    Igniter.Project.Deps.add_dep(igniter, {:req, "~> 0.5"})
+  end
+
+  defp create_billing_context(igniter, assigns) do
+    app_path = assigns[:app_path]
+
+    # Main billing context
+    billing_content = render_template("billing/billing.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing.ex", billing_content, on_exists: :skip)
+
+    # Sub-modules
+    customers_content = render_template("billing/customers.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing/customers.ex", customers_content, on_exists: :skip)
+
+    subscriptions_content = render_template("billing/subscriptions.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing/subscriptions.ex", subscriptions_content, on_exists: :skip)
+
+    purchases_content = render_template("billing/purchases.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing/purchases.ex", purchases_content, on_exists: :skip)
+
+    credits_content = render_template("billing/credits.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing/credits.ex", credits_content, on_exists: :skip)
+
+    billable_content = render_template("billing/billable.ex.eex", assigns)
+    Igniter.create_new_file(igniter, "#{app_path}/billing/billable.ex", billable_content, on_exists: :skip)
+  end
+
+  defp create_billing_schemas(igniter, assigns) do
+    app_path = assigns[:app_path]
+
+    schemas = [
+      "billable_customer",
+      "product",
+      "subscription",
+      "purchase",
+      "credit_spend"
+    ]
+
+    Enum.reduce(schemas, igniter, fn schema_name, acc ->
+      path = "#{app_path}/billing/schemas/#{schema_name}.ex"
+      content = render_template("billing/schemas/#{schema_name}.ex.eex", assigns)
+      Igniter.create_new_file(acc, path, content, on_exists: :skip)
+    end)
+  end
+
+  defp create_paddle_modules(igniter, assigns) do
+    app_path = assigns[:app_path]
+
+    modules = [
+      {"client", "billing/paddle/client.ex.eex"},
+      {"signature", "billing/paddle/signature.ex.eex"},
+      {"webhook_handler", "billing/paddle/webhook_handler.ex.eex"}
+    ]
+
+    Enum.reduce(modules, igniter, fn {name, template}, acc ->
+      path = "#{app_path}/billing/paddle/#{name}.ex"
+      content = render_template(template, assigns)
+      Igniter.create_new_file(acc, path, content, on_exists: :skip)
+    end)
+  end
+
+  defp create_billing_controllers(igniter, assigns) do
+    web_path = assigns[:web_path]
+
+    # Billing controller
+    billing_controller = render_template("billing/controllers/billing/billing_controller.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "#{web_path}/controllers/billing/billing_controller.ex", billing_controller, on_exists: :skip)
+
+    billing_html = render_template("billing/controllers/billing/billing_html.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "#{web_path}/controllers/billing/billing_html.ex", billing_html, on_exists: :skip)
+
+    billing_template = read_template("billing/controllers/billing/html/index.html.heex")
+    igniter = Igniter.create_new_file(igniter, "#{web_path}/controllers/billing/html/index.html.heex", billing_template, on_exists: :skip)
+
+    # Paddle webhook controller
+    webhook_controller = render_template("billing/controllers/paddle_webhook/paddle_webhook_controller.ex.eex", assigns)
+    Igniter.create_new_file(igniter, "#{web_path}/controllers/paddle_webhook/paddle_webhook_controller.ex", webhook_controller, on_exists: :skip)
+  end
+
+  defp create_billing_plugs(igniter, assigns) do
+    web_path = assigns[:web_path]
+
+    plugs = [
+      "paddle_webhook",
+      "require_subscription",
+      "require_purchase",
+      "require_credits"
+    ]
+
+    Enum.reduce(plugs, igniter, fn plug_name, acc ->
+      path = "#{web_path}/plugs/#{plug_name}.ex"
+      content = render_template("billing/plugs/#{plug_name}.ex.eex", assigns)
+      Igniter.create_new_file(acc, path, content, on_exists: :skip)
+    end)
+  end
+
+  defp create_billing_migration(igniter, assigns) do
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
+    # Add 1 second to ensure it's after the auth migration
+    timestamp = String.to_integer(timestamp) + 1 |> to_string()
+
+    path = "priv/repo/migrations/#{timestamp}_create_billing_tables.exs"
+    content = render_template("billing/migrations/create_billing_tables.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_billing_tests(igniter, assigns) do
+    app_name = assigns[:app_name]
+
+    # Create fixtures
+    fixtures_content = render_template("billing/test/support/fixtures/billing_fixtures.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "test/support/fixtures/billing_fixtures.ex", fixtures_content, on_exists: :skip)
+
+    # Create billing test
+    billing_test_content = render_template("billing/test/billing_test.exs.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "test/#{app_name}/billing_test.exs", billing_test_content, on_exists: :skip)
+
+    # Create credits test
+    credits_test_content = render_template("billing/test/credits_test.exs.eex", assigns)
+    Igniter.create_new_file(igniter, "test/#{app_name}/credits_test.exs", credits_test_content, on_exists: :skip)
+  end
+
+  defp update_user_schema_for_billing(igniter, assigns) do
+    app_path = assigns[:app_path]
+
+    # Replace the user schema with billing-aware version
+    path = "#{app_path}/accounts/schemas/user.ex"
+    content = render_template("billing/accounts/schemas/user_with_billing.ex.eex", assigns)
+
+    igniter
+    |> Igniter.include_or_create_file(path, content)
+    |> Igniter.update_elixir_file(path, fn _zipper ->
+      {:ok, Igniter.Code.Common.parse_to_zipper!(content)}
+    end)
+  end
+
+  defp update_router_for_payments(igniter, assigns) do
+    web_module = assigns[:web_module]
+
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
+      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+
+      if String.contains?(node_string, "BillingController") do
+        {:ok, zipper}
+      else
+        webhook_routes = """
+        # Paddle Webhook (no auth, raw body for signature verification)
+        scope "/webhooks", #{web_module} do
+          pipe_through [:api]
+
+          post "/paddle", PaddleWebhookController, :webhook
+        end
+        """
+
+        billing_routes = """
+        # Billing routes (require auth)
+        scope "/billing", #{web_module} do
+          pipe_through [:browser, :require_authenticated_user]
+
+          get "/", BillingController, :index
+          get "/portal", BillingController, :portal
+          get "/checkout/:price_id", BillingController, :checkout
+        end
+        """
+
+        # Add routes before the final end
+        updated_string = String.replace(
+          node_string,
+          ~r/(# Routes for authenticated users.*?end\n  end)/s,
+          "\\1\n\n  #{String.trim(webhook_routes)}\n\n  #{String.trim(billing_routes)}"
+        )
+
+        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+      end
+    end)
+  end
+
+  defp add_payments_config(igniter, assigns) do
+    app_name = String.to_atom(assigns[:app_name])
+    app_module = Module.concat([assigns[:app_module]])
+    billing_module = Module.concat([app_module, "Billing"])
+    user_module = Module.concat([app_module, "Accounts", "Schemas", "User"])
+
+    igniter
+    # Base config
+    |> Igniter.Project.Config.configure("config.exs", app_name, [billing_module, :paddle, :environment], :sandbox)
+    |> Igniter.Project.Config.configure("config.exs", app_name, [billing_module, :allow_multiple_subscriptions], false)
+    # Runtime config (env vars)
+    |> Igniter.Project.Config.configure("runtime.exs", app_name, [billing_module, :paddle, :api_key],
+      {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_API_KEY\")")})
+    |> Igniter.Project.Config.configure("runtime.exs", app_name, [billing_module, :paddle, :webhook_secret],
+      {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_WEBHOOK_SECRET\")")})
+    |> Igniter.Project.Config.configure("runtime.exs", app_name, [billing_module, :paddle, :client_token],
+      {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_CLIENT_TOKEN\")")})
+    # Production uses production environment
+    |> Igniter.Project.Config.configure("prod.exs", app_name, [billing_module, :paddle, :environment], :production)
+    # Billable types configuration
+    |> Igniter.Project.Config.configure("config.exs", app_name, [billing_module, :billable_types],
+      [{:user, user_module}])
   end
 end

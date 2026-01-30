@@ -1,0 +1,267 @@
+defmodule <%= @app_module %>.Billing do
+  @moduledoc """
+  The Billing context.
+
+  Provides a unified API for managing subscriptions, purchases, and credits
+  with Paddle Billing integration.
+
+  ## Customer Management
+
+      Billing.get_or_create_customer(user)
+      Billing.customer_portal_url(user)
+
+  ## Subscriptions
+
+      Billing.subscribed?(user, "pro")
+      Billing.subscription(user, "default")
+      Billing.cancel_subscription(subscription)
+      Billing.pause_subscription(subscription)
+      Billing.resume_subscription(subscription)
+      Billing.grant_subscription(user, "pro", admin_id)
+
+  ## Purchases
+
+      Billing.has_purchased?(user, "course-elixir")
+      Billing.purchase(user, "course-elixir")
+      Billing.grant_purchase(user, "course-elixir", admin_id)
+      Billing.revoke_purchase(purchase)
+
+  ## Credits
+
+      Billing.get_credit_balance(user)
+      Billing.spend_credits(user, 10, "Generated image")
+      Billing.grant_credits(user, 100, "Welcome bonus", admin_id)
+  """
+
+  alias <%= @app_module %>.Billing.{Customers, Subscriptions, Purchases, Credits}
+
+  # ============================================================================
+  # Customer Management
+  # ============================================================================
+
+  @doc """
+  Gets or creates a billable customer for the entity.
+  """
+  defdelegate get_or_create_customer(entity), to: Customers
+
+  @doc """
+  Gets a customer portal URL for managing subscriptions and billing.
+  """
+  defdelegate customer_portal_url(entity), to: Customers
+
+  # ============================================================================
+  # Subscriptions
+  # ============================================================================
+
+  @doc """
+  Checks if the entity has an active subscription.
+
+  ## Examples
+
+      iex> Billing.subscribed?(user)
+      true
+
+      iex> Billing.subscribed?(user, "pro")
+      false
+  """
+  defdelegate subscribed?(entity, name \\ "default"), to: Subscriptions
+
+  @doc """
+  Gets the subscription for an entity by name.
+
+  Returns `nil` if no subscription exists.
+  """
+  defdelegate subscription(entity, name \\ "default"), to: Subscriptions, as: :get_subscription
+
+  @doc """
+  Lists all subscriptions for an entity.
+  """
+  defdelegate list_subscriptions(entity), to: Subscriptions
+
+  @doc """
+  Cancels a subscription at the end of the current billing period.
+  """
+  defdelegate cancel_subscription(subscription, opts \\ []), to: Subscriptions
+
+  @doc """
+  Pauses a subscription.
+  """
+  defdelegate pause_subscription(subscription, opts \\ []), to: Subscriptions
+
+  @doc """
+  Resumes a paused subscription.
+  """
+  defdelegate resume_subscription(subscription, opts \\ []), to: Subscriptions
+
+  @doc """
+  Grants a free subscription to an entity.
+
+  ## Options
+
+    - `:name` - Subscription name (default: "default")
+    - `:ends_at` - When the subscription ends (nil for indefinite)
+    - `:grant_reason` - Reason for the grant
+
+  ## Examples
+
+      iex> Billing.grant_subscription(user, "pro", admin_id, grant_reason: "Beta tester")
+      {:ok, %Subscription{}}
+  """
+  defdelegate grant_subscription(entity, product_slug, granted_by, opts \\ []), to: Subscriptions
+
+  # ============================================================================
+  # Purchases
+  # ============================================================================
+
+  @doc """
+  Checks if the entity has purchased a product.
+
+  ## Examples
+
+      iex> Billing.has_purchased?(user, "course-elixir")
+      true
+  """
+  defdelegate has_purchased?(entity, product_slug), to: Purchases
+
+  @doc """
+  Gets a purchase for an entity by product slug.
+
+  Returns `nil` if no purchase exists.
+  """
+  defdelegate purchase(entity, product_slug), to: Purchases, as: :get_purchase
+
+  @doc """
+  Lists all purchases for an entity.
+  """
+  defdelegate list_purchases(entity), to: Purchases
+
+  @doc """
+  Grants a free purchase to an entity.
+
+  ## Options
+
+    - `:credits_granted` - Number of credits to grant (for credit products)
+    - `:credits_expire_at` - When credits expire
+    - `:grant_reason` - Reason for the grant
+
+  ## Examples
+
+      iex> Billing.grant_purchase(user, "course-elixir", admin_id, grant_reason: "Contest winner")
+      {:ok, %Purchase{}}
+  """
+  defdelegate grant_purchase(entity, product_slug, granted_by, opts \\ []), to: Purchases
+
+  @doc """
+  Revokes access for a purchase.
+  """
+  defdelegate revoke_purchase(purchase), to: Purchases, as: :revoke_access
+
+  # ============================================================================
+  # Credits
+  # ============================================================================
+
+  @doc """
+  Gets the total credit balance for an entity.
+
+  ## Examples
+
+      iex> Billing.get_credit_balance(user)
+      150
+  """
+  defdelegate get_credit_balance(entity), to: Credits
+
+  @doc """
+  Spends credits for an entity.
+
+  Returns `{:ok, new_balance}` on success or `{:error, :insufficient_credits}`.
+
+  ## Options
+
+    - `:reference_type` - Type of reference (e.g., "image_generation")
+    - `:reference_id` - ID of the referenced entity
+
+  ## Examples
+
+      iex> Billing.spend_credits(user, 10, "Generated avatar")
+      {:ok, 140}
+
+      iex> Billing.spend_credits(user, 1000, "Big request")
+      {:error, :insufficient_credits}
+  """
+  defdelegate spend_credits(entity, amount, description, opts \\ []), to: Credits
+
+  @doc """
+  Grants credits to an entity.
+
+  ## Options
+
+    - `:credits_expire_at` - When the credits expire
+    - `:product_slug` - Product slug to associate with (optional)
+
+  ## Examples
+
+      iex> Billing.grant_credits(user, 100, "Welcome bonus", admin_id)
+      {:ok, %Purchase{}}
+  """
+  defdelegate grant_credits(entity, amount, reason, granted_by, opts \\ []), to: Credits
+
+  @doc """
+  Gets credit spend history for an entity.
+  """
+  defdelegate list_credit_spends(entity, opts \\ []), to: Credits
+
+  @doc """
+  Gets purchases with remaining credits for an entity.
+  """
+  defdelegate list_credit_purchases(entity), to: Credits
+
+  # ============================================================================
+  # Products
+  # ============================================================================
+
+  alias <%= @app_module %>.Billing.Schemas.Product
+  alias <%= @app_module %>.Repo
+
+  @doc """
+  Gets a product by slug.
+  """
+  def get_product_by_slug(slug) do
+    Repo.get_by(Product, slug: slug)
+  end
+
+  @doc """
+  Lists all active products.
+  """
+  def list_products do
+    import Ecto.Query
+    from(p in Product, where: p.active == true, order_by: p.name)
+    |> Repo.all()
+  end
+
+  @doc """
+  Lists products by type.
+  """
+  def list_products_by_type(type) do
+    import Ecto.Query
+    from(p in Product, where: p.type == ^type and p.active == true, order_by: p.name)
+    |> Repo.all()
+  end
+
+  @doc """
+  Creates a product.
+  """
+  def create_product(attrs) do
+    %Product{}
+    |> Product.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates a product.
+  """
+  def update_product(product, attrs) do
+    product
+    |> Product.changeset(attrs)
+    |> Repo.update()
+  end
+end

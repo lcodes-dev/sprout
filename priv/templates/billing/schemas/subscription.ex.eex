@@ -1,0 +1,136 @@
+defmodule <%= @app_module %>.Billing.Schemas.Subscription do
+  @moduledoc """
+  Represents a subscription for a billable customer.
+
+  Subscriptions can be created through Paddle payments or granted by admins.
+  Status is synced via Paddle webhooks.
+  """
+
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  alias <%= @app_module %>.Billing.Schemas.{BillableCustomer, Product}
+
+  @statuses ~w(active trialing past_due paused canceled)
+
+  schema "subscriptions" do
+    field :name, :string, default: "default"
+    field :paddle_subscription_id, :string
+    field :paddle_price_id, :string
+    field :status, :string
+    field :quantity, :integer, default: 1
+    field :trial_ends_at, :utc_datetime
+    field :paused_at, :utc_datetime
+    field :current_period_start, :utc_datetime
+    field :current_period_end, :utc_datetime
+    field :canceled_at, :utc_datetime
+    field :ends_at, :utc_datetime
+    field :granted_by, :integer
+    field :grant_reason, :string
+
+    belongs_to :billable_customer, BillableCustomer
+    belongs_to :product, Product
+
+    timestamps(type: :utc_datetime)
+  end
+
+  @doc false
+  def changeset(subscription, attrs) do
+    subscription
+    |> cast(attrs, [
+      :billable_customer_id,
+      :product_id,
+      :name,
+      :paddle_subscription_id,
+      :paddle_price_id,
+      :status,
+      :quantity,
+      :trial_ends_at,
+      :paused_at,
+      :current_period_start,
+      :current_period_end,
+      :canceled_at,
+      :ends_at,
+      :granted_by,
+      :grant_reason
+    ])
+    |> validate_required([:billable_customer_id, :name, :status])
+    |> validate_inclusion(:status, @statuses)
+    |> unique_constraint(:paddle_subscription_id)
+  end
+
+  @doc """
+  Creates a changeset for a subscription created via Paddle.
+  """
+  def paddle_changeset(subscription, attrs) do
+    subscription
+    |> cast(attrs, [
+      :billable_customer_id,
+      :product_id,
+      :name,
+      :paddle_subscription_id,
+      :paddle_price_id,
+      :status,
+      :quantity,
+      :trial_ends_at,
+      :current_period_start,
+      :current_period_end
+    ])
+    |> validate_required([:billable_customer_id, :paddle_subscription_id, :status])
+    |> validate_inclusion(:status, @statuses)
+    |> unique_constraint(:paddle_subscription_id)
+  end
+
+  @doc """
+  Creates a changeset for a granted (free) subscription.
+  """
+  def grant_changeset(subscription, attrs) do
+    subscription
+    |> cast(attrs, [
+      :billable_customer_id,
+      :product_id,
+      :name,
+      :status,
+      :ends_at,
+      :granted_by,
+      :grant_reason
+    ])
+    |> validate_required([:billable_customer_id, :name, :status, :granted_by])
+    |> validate_inclusion(:status, @statuses)
+  end
+
+  @doc """
+  Creates a changeset for updating subscription status from webhooks.
+  """
+  def status_changeset(subscription, attrs) do
+    subscription
+    |> cast(attrs, [
+      :status,
+      :paused_at,
+      :canceled_at,
+      :ends_at,
+      :current_period_start,
+      :current_period_end
+    ])
+    |> validate_inclusion(:status, @statuses)
+  end
+
+  @doc """
+  Returns true if the subscription is currently active.
+  """
+  def active?(%__MODULE__{status: status, ends_at: ends_at}) do
+    status in ["active", "trialing"] and
+      (is_nil(ends_at) or DateTime.compare(ends_at, DateTime.utc_now()) == :gt)
+  end
+
+  @doc """
+  Returns true if the subscription has access (active or in grace period).
+  """
+  def has_access?(%__MODULE__{status: status, ends_at: ends_at}) do
+    cond do
+      status in ["active", "trialing"] -> true
+      status == "canceled" and not is_nil(ends_at) -> DateTime.compare(ends_at, DateTime.utc_now()) == :gt
+      true -> false
+    end
+  end
+end

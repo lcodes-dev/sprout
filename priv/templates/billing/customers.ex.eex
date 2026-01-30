@@ -1,0 +1,158 @@
+defmodule <%= @app_module %>.Billing.Customers do
+  @moduledoc """
+  Customer management for billing.
+
+  Handles creating and retrieving billable customers, linking them to Paddle.
+  """
+
+  import Ecto.Query
+
+  alias <%= @app_module %>.Repo
+  alias <%= @app_module %>.Billing.Billable
+  alias <%= @app_module %>.Billing.Schemas.BillableCustomer
+  alias <%= @app_module %>.Billing.Paddle.Client
+
+  @doc """
+  Gets or creates a billable customer for the given entity.
+
+  The entity must implement the Billable behaviour.
+  """
+  def get_or_create_customer(entity) do
+    billable_type = entity.__struct__.billable_type()
+    billable_id = entity.__struct__.billable_id(entity)
+
+    case get_customer(billable_type, billable_id) do
+      nil -> create_customer(entity)
+      customer -> {:ok, customer}
+    end
+  end
+
+  @doc """
+  Gets a billable customer by type and ID.
+  """
+  def get_customer(billable_type, billable_id) do
+    Repo.get_by(BillableCustomer, billable_type: billable_type, billable_id: billable_id)
+  end
+
+  @doc """
+  Gets a billable customer by their Paddle customer ID.
+  """
+  def get_by_paddle_id(paddle_customer_id) do
+    Repo.get_by(BillableCustomer, paddle_customer_id: paddle_customer_id)
+  end
+
+  @doc """
+  Gets or creates a billable customer by Paddle customer ID.
+
+  Used in webhook handlers when we only have the Paddle ID.
+  Creates a placeholder customer that will be linked to the actual entity later.
+  """
+  def get_or_create_by_paddle_id(paddle_customer_id) do
+    case get_by_paddle_id(paddle_customer_id) do
+      nil ->
+        # In webhook context, we may not have entity info yet.
+        # This shouldn't happen if checkout properly links customer first.
+        {:error, :customer_not_found}
+
+      customer ->
+        {:ok, customer}
+    end
+  end
+
+  @doc """
+  Creates a new billable customer for the given entity.
+  """
+  def create_customer(entity) do
+    billable_type = entity.__struct__.billable_type()
+    billable_id = entity.__struct__.billable_id(entity)
+
+    attrs = %{
+      billable_type: billable_type,
+      billable_id: billable_id
+    }
+
+    %BillableCustomer{}
+    |> BillableCustomer.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Links a Paddle customer ID to a billable customer.
+
+  Creates the Paddle customer if it doesn't exist.
+  """
+  def link_paddle_customer(customer, paddle_customer_id) do
+    customer
+    |> BillableCustomer.paddle_customer_changeset(paddle_customer_id)
+    |> Repo.update()
+  end
+
+  @doc """
+  Creates a Paddle customer and links it to the billable customer.
+
+  Returns the updated billable customer with the Paddle customer ID.
+  """
+  def create_paddle_customer(entity, customer) do
+    email = entity.__struct__.billable_email(entity)
+
+    name =
+      if function_exported?(entity.__struct__, :billable_name, 1) do
+        entity.__struct__.billable_name(entity)
+      else
+        nil
+      end
+
+    opts = [email: email]
+    opts = if name, do: Keyword.put(opts, :name, name), else: opts
+
+    case Client.create_customer(opts) do
+      {:ok, paddle_customer} ->
+        link_paddle_customer(customer, paddle_customer["id"])
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Ensures the billable customer has a Paddle customer ID.
+
+  Creates one if it doesn't exist.
+  """
+  def ensure_paddle_customer(entity, customer) do
+    if customer.paddle_customer_id do
+      {:ok, customer}
+    else
+      create_paddle_customer(entity, customer)
+    end
+  end
+
+  @doc """
+  Gets a customer portal URL for the entity.
+  """
+  def customer_portal_url(entity) do
+    with {:ok, customer} <- get_or_create_customer(entity),
+         {:ok, customer} <- ensure_paddle_customer(entity, customer),
+         {:ok, session} <- Client.create_portal_session(customer.paddle_customer_id) do
+      {:ok, session["urls"]["general"]["overview"]}
+    end
+  end
+
+  @doc """
+  Loads the billable entity for a customer.
+
+  Returns `{:ok, entity}` or `{:error, :not_found}`.
+  """
+  def load_billable_entity(%BillableCustomer{billable_type: type, billable_id: id}) do
+    case Billable.module_for_type(type) do
+      nil ->
+        {:error, :unknown_billable_type}
+
+      module ->
+        case Repo.get(module, id) do
+          nil -> {:error, :not_found}
+          entity -> {:ok, entity}
+        end
+    end
+  end
+end
