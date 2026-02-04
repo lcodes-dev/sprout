@@ -16,8 +16,7 @@ defmodule <%= @app_module %>.Billing.Paddle.WebhookHandler do
 
   require Logger
 
-  alias <%= @app_module %>.Billing
-  alias <%= @app_module %>.Billing.{Customers, Subscriptions, Purchases, Credits}
+  alias <%= @app_module %>.Billing.{Customers, Subscriptions, Purchases}
   alias <%= @app_module %>.Billing.Schemas.{Product, Subscription, Purchase}
   alias <%= @app_module %>.Repo
 

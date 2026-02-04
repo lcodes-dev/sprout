@@ -15,17 +15,21 @@ defmodule <%= @web_module %>.BillingController do
   @doc """
   Shows the billing dashboard with subscriptions and purchases.
   """
-  def index(conn, _params) do
+  def index(conn, params) do
     user = conn.assigns.current_scope.user
 
     subscriptions = Billing.list_subscriptions(user)
     purchases = Billing.list_purchases(user)
     credit_balance = Billing.get_credit_balance(user)
+    subscription_products = Billing.list_products_by_type("subscription")
+    checkout_success = params["checkout"] == "success"
 
     render(conn, :index,
       subscriptions: subscriptions,
       purchases: purchases,
       credit_balance: credit_balance,
+      subscription_products: subscription_products,
+      checkout_success: checkout_success,
       paddle_client_token: paddle_client_token(),
       paddle_environment: paddle_environment()
     )
@@ -76,17 +80,17 @@ defmodule <%= @web_module %>.BillingController do
   end
 
   defp paddle_client_token do
-    config()[:client_token]
+    config(:client_token)
   end
 
   defp paddle_environment do
-    case config()[:environment] do
+    case config(:environment) do
       :production -> "production"
       _ -> "sandbox"
     end
   end
 
-  defp config do
-    Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing)[:paddle] || []
+  defp config(atom) do
+    Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing)[:paddle][atom] || []
   end
 end

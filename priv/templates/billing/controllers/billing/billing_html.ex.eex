@@ -6,4 +6,31 @@ defmodule <%= @web_module %>.BillingHTML do
   use <%= @web_module %>, :html
 
   embed_templates "html/*"
+
+  @doc """
+  Formats a price amount (in minor units) with currency symbol.
+  """
+  def format_price(nil, _currency), do: ""
+
+  def format_price(amount, currency) when is_binary(amount) do
+    format_price(String.to_integer(amount), currency)
+  end
+
+  def format_price(amount, currency) when is_integer(amount) do
+    dollars = amount / 100
+
+    symbol =
+      case currency do
+        "USD" -> "$"
+        "EUR" -> "€"
+        "GBP" -> "£"
+        _ -> "#{currency} "
+      end
+
+    if dollars == trunc(dollars) do
+      "#{symbol}#{trunc(dollars)}"
+    else
+      "#{symbol}#{:erlang.float_to_binary(dollars, decimals: 2)}"
+    end
+  end
 end
