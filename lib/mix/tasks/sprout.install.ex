@@ -12,7 +12,7 @@ defmodule Mix.Tasks.Sprout.Install do
 
   - `--examples` - Include example Turbo controller demonstrating all features
   - `--no-auth` - Skip user authentication (auth is included by default)
-  - `--payments` - Include Paddle Billing integration for subscriptions, purchases, and credits
+  - `--no-payments` - Skip Paddle Billing integration (payments is included by default)
 
   ## What Gets Installed
 
@@ -32,7 +32,7 @@ defmodule Mix.Tasks.Sprout.Install do
   - HTML email templates
   - Dashboard layout with user menu
 
-  With payments (--payments):
+  By default (with payments):
   - Paddle Billing integration
   - Subscription management
   - One-time purchases with gated access
@@ -52,7 +52,7 @@ defmodule Mix.Tasks.Sprout.Install do
   def info(_argv, _composing_task) do
     %Igniter.Mix.Task.Info{
       group: :sprout,
-      example: "mix sprout.install --examples --payments",
+      example: "mix sprout.install --examples",
       schema: [
         examples: :boolean,
         auth: :boolean,
@@ -61,7 +61,7 @@ defmodule Mix.Tasks.Sprout.Install do
       defaults: [
         examples: false,
         auth: true,
-        payments: false
+        payments: true
       ],
       aliases: [
         e: :examples,
@@ -78,7 +78,7 @@ defmodule Mix.Tasks.Sprout.Install do
     options = igniter.args.options
     include_examples? = Keyword.get(options, :examples, false)
     include_auth? = Keyword.get(options, :auth, true)
-    include_payments? = Keyword.get(options, :payments, false)
+    include_payments? = Keyword.get(options, :payments, true)
 
     # Get app name from Mix project config (most reliable source)
     app_name = Mix.Project.config()[:app] |> to_string()
