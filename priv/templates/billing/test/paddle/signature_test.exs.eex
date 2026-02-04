@@ -1,0 +1,215 @@
+defmodule <%= @app_module %>.Billing.Paddle.SignatureTest do
+  use ExUnit.Case, async: true
+
+  import ExUnit.CaptureLog
+
+  alias <%= @app_module %>.Billing.Paddle.Signature
+
+  @test_secret "whsec_test_secret_key_for_testing"
+
+  setup do
+    # Configure test webhook secret
+    Application.put_env(:<%= @app_name %>, <%= @app_module %>.Billing, [
+      paddle: [webhook_secret: @test_secret]
+    ])
+
+    on_exit(fn ->
+      Application.delete_env(:<%= @app_name %>, <%= @app_module %>.Billing)
+    end)
+
+    :ok
+  end
+
+  describe "parse_signature/1" do
+    test "parses valid signature header" do
+      signature = "ts=1234567890;h1=abc123def456"
+
+      assert {:ok, %{ts: "1234567890", h1: "abc123def456"}} = Signature.parse_signature(signature)
+    end
+
+    test "returns error for missing signature" do
+      assert {:error, :missing_signature} = Signature.parse_signature(nil)
+    end
+
+    test "returns error for invalid format - missing ts" do
+      assert {:error, :invalid_signature_format} = Signature.parse_signature("h1=abc123")
+    end
+
+    test "returns error for invalid format - missing h1" do
+      assert {:error, :invalid_signature_format} = Signature.parse_signature("ts=1234567890")
+    end
+
+    test "returns error for empty string" do
+      assert {:error, :invalid_signature_format} = Signature.parse_signature("")
+    end
+
+    test "handles extra parameters gracefully" do
+      signature = "ts=1234567890;h1=abc123;extra=value"
+
+      assert {:ok, %{ts: "1234567890", h1: "abc123"}} = Signature.parse_signature(signature)
+    end
+  end
+
+  describe "verify_timestamp/1" do
+    test "accepts recent timestamp" do
+      recent_ts = Integer.to_string(System.system_time(:second))
+
+      assert :ok = Signature.verify_timestamp(recent_ts)
+    end
+
+    test "accepts timestamp within 5 minutes" do
+      ts_4_min_ago = System.system_time(:second) - 240
+      ts = Integer.to_string(ts_4_min_ago)
+
+      assert :ok = Signature.verify_timestamp(ts)
+    end
+
+    test "rejects timestamp older than 5 minutes" do
+      ts_6_min_ago = System.system_time(:second) - 360
+      ts = Integer.to_string(ts_6_min_ago)
+
+      capture_log(fn ->
+        assert {:error, :timestamp_too_old} = Signature.verify_timestamp(ts)
+      end)
+    end
+
+    test "rejects future timestamp beyond 5 minutes" do
+      ts_6_min_future = System.system_time(:second) + 360
+      ts = Integer.to_string(ts_6_min_future)
+
+      capture_log(fn ->
+        assert {:error, :timestamp_too_old} = Signature.verify_timestamp(ts)
+      end)
+    end
+
+    test "rejects invalid timestamp format" do
+      assert {:error, :invalid_timestamp} = Signature.verify_timestamp("not_a_number")
+      assert {:error, :invalid_timestamp} = Signature.verify_timestamp("123abc")
+    end
+  end
+
+  describe "verify_hmac/3" do
+    test "accepts valid signature" do
+      raw_body = ~s({"event_type":"test"})
+      ts = Integer.to_string(System.system_time(:second))
+
+      # Generate expected signature
+      signed_payload = "#{ts}:#{raw_body}"
+      expected_signature = :crypto.mac(:hmac, :sha256, @test_secret, signed_payload)
+                          |> Base.encode16(case: :lower)
+
+      assert :ok = Signature.verify_hmac(raw_body, ts, expected_signature)
+    end
+
+    test "rejects invalid signature" do
+      raw_body = ~s({"event_type":"test"})
+      ts = Integer.to_string(System.system_time(:second))
+
+      capture_log(fn ->
+        assert {:error, :invalid_signature} = Signature.verify_hmac(raw_body, ts, "invalid_signature")
+      end)
+    end
+
+    test "rejects signature with wrong body" do
+      raw_body = ~s({"event_type":"test"})
+      different_body = ~s({"event_type":"different"})
+      ts = Integer.to_string(System.system_time(:second))
+
+      # Generate signature for different body
+      signed_payload = "#{ts}:#{different_body}"
+      wrong_signature = :crypto.mac(:hmac, :sha256, @test_secret, signed_payload)
+                        |> Base.encode16(case: :lower)
+
+      capture_log(fn ->
+        assert {:error, :invalid_signature} = Signature.verify_hmac(raw_body, ts, wrong_signature)
+      end)
+    end
+
+    test "rejects signature with wrong timestamp" do
+      raw_body = ~s({"event_type":"test"})
+      ts = Integer.to_string(System.system_time(:second))
+      wrong_ts = Integer.to_string(System.system_time(:second) - 1000)
+
+      # Generate signature with different timestamp
+      signed_payload = "#{wrong_ts}:#{raw_body}"
+      wrong_signature = :crypto.mac(:hmac, :sha256, @test_secret, signed_payload)
+                        |> Base.encode16(case: :lower)
+
+      capture_log(fn ->
+        assert {:error, :invalid_signature} = Signature.verify_hmac(raw_body, ts, wrong_signature)
+      end)
+    end
+  end
+
+  describe "verify/2" do
+    test "full verification flow with valid signature" do
+      raw_body = ~s({"event_type":"subscription.created","data":{}})
+      ts = Integer.to_string(System.system_time(:second))
+
+      # Generate valid signature
+      signed_payload = "#{ts}:#{raw_body}"
+      signature_hash = :crypto.mac(:hmac, :sha256, @test_secret, signed_payload)
+                       |> Base.encode16(case: :lower)
+
+      paddle_signature = "ts=#{ts};h1=#{signature_hash}"
+
+      assert {:ok, payload} = Signature.verify(raw_body, paddle_signature)
+      assert payload["event_type"] == "subscription.created"
+    end
+
+    test "rejects missing signature header" do
+      raw_body = ~s({"event_type":"test"})
+
+      assert {:error, :missing_signature} = Signature.verify(raw_body, nil)
+    end
+
+    test "rejects expired signature" do
+      raw_body = ~s({"event_type":"test"})
+      old_ts = Integer.to_string(System.system_time(:second) - 400)
+
+      signed_payload = "#{old_ts}:#{raw_body}"
+      signature_hash = :crypto.mac(:hmac, :sha256, @test_secret, signed_payload)
+                       |> Base.encode16(case: :lower)
+
+      paddle_signature = "ts=#{old_ts};h1=#{signature_hash}"
+
+      capture_log(fn ->
+        assert {:error, :timestamp_too_old} = Signature.verify(raw_body, paddle_signature)
+      end)
+    end
+
+    test "rejects tampered body" do
+      original_body = ~s({"event_type":"original"})
+      tampered_body = ~s({"event_type":"tampered"})
+      ts = Integer.to_string(System.system_time(:second))
+
+      # Generate signature for original body
+      signed_payload = "#{ts}:#{original_body}"
+      signature_hash = :crypto.mac(:hmac, :sha256, @test_secret, signed_payload)
+                       |> Base.encode16(case: :lower)
+
+      paddle_signature = "ts=#{ts};h1=#{signature_hash}"
+
+      # Try to verify with tampered body
+      capture_log(fn ->
+        assert {:error, :invalid_signature} = Signature.verify(tampered_body, paddle_signature)
+      end)
+    end
+
+    test "rejects malformed JSON body" do
+      raw_body = "not valid json"
+      ts = Integer.to_string(System.system_time(:second))
+
+      signed_payload = "#{ts}:#{raw_body}"
+      signature_hash = :crypto.mac(:hmac, :sha256, @test_secret, signed_payload)
+                       |> Base.encode16(case: :lower)
+
+      paddle_signature = "ts=#{ts};h1=#{signature_hash}"
+
+      # Should raise when trying to decode JSON
+      assert_raise Jason.DecodeError, fn ->
+        Signature.verify(raw_body, paddle_signature)
+      end
+    end
+  end
+end

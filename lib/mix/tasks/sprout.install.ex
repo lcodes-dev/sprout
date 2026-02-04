@@ -947,16 +947,23 @@ defmodule Mix.Tasks.Sprout.Install do
   defp maybe_add_payments(igniter, true, assigns) do
     igniter
     |> add_req_dependency()
+    |> add_oban_dependency()
     |> create_billing_context(assigns)
     |> create_billing_schemas(assigns)
     |> create_paddle_modules(assigns)
+    |> create_billing_worker(assigns)
     |> create_billing_controllers(assigns)
     |> create_billing_plugs(assigns)
     |> create_billing_migration(assigns)
+    |> create_oban_migration(assigns)
     |> create_billing_tests(assigns)
+    |> create_additional_billing_tests(assigns)
     |> update_user_schema_for_billing(assigns)
     |> update_router_for_payments(assigns)
+    |> update_application_for_oban(assigns)
+    |> update_endpoint_for_billing(assigns)
     |> add_payments_config(assigns)
+    |> add_oban_config(assigns)
   end
 
   defp add_req_dependency(igniter) do
@@ -1043,7 +1050,7 @@ defmodule Mix.Tasks.Sprout.Install do
     web_path = assigns[:web_path]
 
     plugs = [
-      "paddle_webhook",
+      "cache_raw_body",
       "require_subscription",
       "require_purchase",
       "require_credits"
@@ -1160,5 +1167,128 @@ defmodule Mix.Tasks.Sprout.Install do
     # Billable types configuration
     |> Igniter.Project.Config.configure("config.exs", app_name, [billing_module, :billable_types],
       [{:user, user_module}])
+  end
+
+  # ============================================================================
+  # Oban Integration for Payments
+  # ============================================================================
+
+  defp add_oban_dependency(igniter) do
+    Igniter.Project.Deps.add_dep(igniter, {:oban, "~> 2.0"})
+  end
+
+  defp create_billing_worker(igniter, assigns) do
+    path = "#{assigns[:app_path]}/billing/workers/sync_products.ex"
+    content = render_template("billing/workers/sync_products.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_oban_migration(igniter, assigns) do
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
+    # Add 2 seconds to ensure it's after the billing migration
+    timestamp = String.to_integer(timestamp) + 2 |> to_string()
+
+    path = "priv/repo/migrations/#{timestamp}_add_oban.exs"
+    content = render_template("billing/migrations/add_oban.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_additional_billing_tests(igniter, assigns) do
+    app_name = assigns[:app_name]
+
+    # Create billing context tests
+    context_tests = [
+      {"billing/test/customers_test.exs.eex", "test/#{app_name}/billing/customers_test.exs"},
+      {"billing/test/subscriptions_test.exs.eex", "test/#{app_name}/billing/subscriptions_test.exs"},
+      {"billing/test/purchases_test.exs.eex", "test/#{app_name}/billing/purchases_test.exs"}
+    ]
+
+    # Create paddle tests
+    paddle_tests = [
+      {"billing/test/paddle/signature_test.exs.eex", "test/#{app_name}/billing/paddle/signature_test.exs"},
+      {"billing/test/paddle/webhook_handler_test.exs.eex", "test/#{app_name}/billing/paddle/webhook_handler_test.exs"}
+    ]
+
+    # Create controller tests
+    controller_tests = [
+      {"billing/test/controllers/billing_controller_test.exs.eex", "test/#{app_name}_web/controllers/billing_controller_test.exs"},
+      {"billing/test/controllers/paddle_webhook_controller_test.exs.eex", "test/#{app_name}_web/controllers/paddle_webhook_controller_test.exs"}
+    ]
+
+    igniter
+    |> create_test_files_from_templates(context_tests, assigns)
+    |> create_test_files_from_templates(paddle_tests, assigns)
+    |> create_test_files_from_templates(controller_tests, assigns)
+  end
+
+  defp create_test_files_from_templates(igniter, tests, assigns) do
+    Enum.reduce(tests, igniter, fn {template_name, output_path}, acc ->
+      content = render_template(template_name, assigns)
+      Igniter.create_new_file(acc, output_path, content, on_exists: :skip)
+    end)
+  end
+
+  defp update_application_for_oban(igniter, assigns) do
+    app_module = Module.concat([assigns[:app_module], "Application"])
+    app_name = assigns[:app_name]
+
+    oban_child = "{Oban, Application.fetch_env!(:#{app_name}, Oban)}"
+
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(app_module, fn zipper ->
+      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+
+      if String.contains?(node_string, "Oban") do
+        {:ok, zipper}
+      else
+        # Add Oban to children list after the Repo
+        updated_string = String.replace(
+          node_string,
+          ~r/(#{assigns[:app_module]}\.Repo,)/,
+          "\\1\n      #{oban_child},"
+        )
+        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+      end
+    end)
+  end
+
+  defp update_endpoint_for_billing(igniter, assigns) do
+    web_module = assigns[:web_module]
+    endpoint_module = Module.concat([web_module, "Endpoint"])
+
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(endpoint_module, fn zipper ->
+      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+
+      if String.contains?(node_string, "CacheRawBody") do
+        {:ok, zipper}
+      else
+        # Update Plug.Parsers to include body_reader
+        updated_string = String.replace(
+          node_string,
+          ~r/(plug Plug\.Parsers,\s*parsers: \[:urlencoded, :multipart, :json\],\s*pass: \["\*\/\*"\],)/s,
+          "\\1\n    body_reader: {#{web_module}.Plugs.CacheRawBody, :read_body, []},"
+        )
+        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+      end
+    end)
+  end
+
+  defp add_oban_config(igniter, assigns) do
+    app_name = String.to_atom(assigns[:app_name])
+    repo_module = Module.concat([assigns[:app_module], "Repo"])
+
+    igniter
+    # config.exs - Oban base config
+    |> Igniter.Project.Config.configure("config.exs", app_name, [Oban, :engine],
+        {:code, Sourceror.parse_string!("Oban.Engines.Lite")})
+    |> Igniter.Project.Config.configure("config.exs", app_name, [Oban, :notifier],
+        {:code, Sourceror.parse_string!("Oban.Notifiers.PG")})
+    |> Igniter.Project.Config.configure("config.exs", app_name, [Oban, :queues],
+        [default: 10])
+    |> Igniter.Project.Config.configure("config.exs", app_name, [Oban, :repo],
+        {:code, Sourceror.parse_string!("#{repo_module}")})
+    # test.exs - Oban testing mode
+    |> Igniter.Project.Config.configure("test.exs", app_name, [Oban, :testing], :manual)
   end
 end

@@ -1,0 +1,109 @@
+defmodule <%= @web_module %>.BillingControllerTest do
+  use <%= @web_module %>.ConnCase, async: false
+
+  import <%= @app_module %>.BillingFixtures
+
+  setup :register_and_log_in_user
+
+  describe "GET /billing" do
+    test "renders billing page with no subscriptions", %{conn: conn} do
+      conn = get(conn, ~p"/billing")
+      response = html_response(conn, 200)
+
+      assert response =~ "Billing"
+      assert response =~ "Subscription"
+      assert response =~ "any active subscriptions"
+    end
+
+    test "renders billing page with active subscription", %{conn: conn, user: user} do
+      product = subscription_product_fixture(%{name: "Pro Plan"})
+      _subscription = subscription_fixture(user, %{
+        status: "active",
+        product: product
+      })
+
+      conn = get(conn, ~p"/billing")
+      response = html_response(conn, 200)
+
+      assert response =~ "Billing"
+      assert response =~ "Pro Plan"
+      assert response =~ "Active"
+    end
+
+    test "renders billing page with trialing subscription", %{conn: conn, user: user} do
+      _subscription = subscription_fixture(user, %{status: "trialing"})
+
+      conn = get(conn, ~p"/billing")
+      response = html_response(conn, 200)
+
+      assert response =~ "Trialing"
+    end
+
+    test "renders billing page with purchases", %{conn: conn, user: user} do
+      product = one_time_product_fixture(%{name: "Course Bundle"})
+      _purchase = purchase_fixture(user, %{product: product, status: "completed"})
+
+      conn = get(conn, ~p"/billing")
+      response = html_response(conn, 200)
+
+      assert response =~ "Course Bundle"
+      assert response =~ "Completed"
+    end
+
+    test "shows credit balance when user has credits", %{conn: conn, user: user} do
+      _purchase = credit_purchase_fixture(user, 500)
+
+      conn = get(conn, ~p"/billing")
+      response = html_response(conn, 200)
+
+      assert response =~ "Credit Balance"
+      assert response =~ "500 credits"
+    end
+
+    test "shows processing message on checkout success with no subscription yet", %{conn: conn} do
+      conn = get(conn, ~p"/billing?checkout=success")
+      response = html_response(conn, 200)
+
+      assert response =~ "Processing your subscription"
+      assert response =~ "checkout-processing"
+    end
+
+    test "shows success message on checkout success with subscription", %{conn: conn, user: user} do
+      _subscription = subscription_fixture(user, %{status: "active"})
+
+      conn = get(conn, ~p"/billing?checkout=success")
+      response = html_response(conn, 200)
+
+      assert response =~ "Subscription activated"
+    end
+
+    test "shows available subscription products", %{conn: conn} do
+      _product = product_fixture(%{
+        name: "Premium Plan",
+        type: "subscription",
+        active: true
+      })
+
+      conn = get(conn, ~p"/billing")
+      response = html_response(conn, 200)
+
+      assert response =~ "Available Plans"
+      assert response =~ "Premium Plan"
+    end
+
+    test "redirects if user is not logged in" do
+      conn = build_conn()
+      conn = get(conn, ~p"/billing")
+
+      assert redirected_to(conn) == ~p"/users/log-in"
+    end
+  end
+
+  describe "GET /billing/checkout/:price_id" do
+    test "returns checkout data for valid price_id", %{conn: conn} do
+      conn = get(conn, ~p"/billing/checkout/pri_test123")
+
+      assert json_response(conn, 200)["price_id"] == "pri_test123"
+    end
+  end
+end

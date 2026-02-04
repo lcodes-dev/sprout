@@ -1,0 +1,163 @@
+defmodule <%= @app_module %>.Billing.CustomersTest do
+  use <%= @app_module %>.DataCase, async: false
+
+  alias <%= @app_module %>.Billing.Customers
+  alias <%= @app_module %>.Billing.Schemas.BillableCustomer
+
+  import <%= @app_module %>.AccountsFixtures
+  import <%= @app_module %>.BillingFixtures
+
+  setup do
+    # Configure billable_types for load_billable_entity tests
+    existing_config = Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing, [])
+
+    new_config = Keyword.put(existing_config, :billable_types, [
+      user: <%= @app_module %>.Accounts.User
+    ])
+
+    Application.put_env(:<%= @app_name %>, <%= @app_module %>.Billing, new_config)
+
+    on_exit(fn ->
+      Application.put_env(:<%= @app_name %>, <%= @app_module %>.Billing, existing_config)
+    end)
+
+    :ok
+  end
+
+  describe "get_or_create_customer/1" do
+    test "creates a new customer for user" do
+      user = user_fixture()
+
+      assert {:ok, customer} = Customers.get_or_create_customer(user)
+      assert customer.billable_type == "user"
+      assert customer.billable_id == user.id
+    end
+
+    test "returns existing customer" do
+      user = user_fixture()
+      existing = billable_customer_fixture(user)
+
+      assert {:ok, customer} = Customers.get_or_create_customer(user)
+      assert customer.id == existing.id
+    end
+  end
+
+  describe "get_customer/2" do
+    test "returns nil when customer doesn't exist" do
+      assert Customers.get_customer("user", 999_999_999) == nil
+    end
+
+    test "returns customer by billable type and id" do
+      user = user_fixture()
+      existing = billable_customer_fixture(user)
+
+      customer = Customers.get_customer("user", user.id)
+      assert customer.id == existing.id
+    end
+  end
+
+  describe "get_by_paddle_id/1" do
+    test "returns nil when not found" do
+      assert Customers.get_by_paddle_id("ctm_nonexistent") == nil
+    end
+
+    test "returns customer by paddle customer ID" do
+      user = user_fixture()
+      existing = billable_customer_fixture(user, %{paddle_customer_id: "ctm_test123"})
+
+      customer = Customers.get_by_paddle_id("ctm_test123")
+      assert customer.id == existing.id
+    end
+  end
+
+  describe "get_or_create_by_paddle_id/1" do
+    test "returns existing customer by paddle ID" do
+      user = user_fixture()
+      existing = billable_customer_fixture(user, %{paddle_customer_id: "ctm_existing"})
+
+      assert {:ok, customer} = Customers.get_or_create_by_paddle_id("ctm_existing")
+      assert customer.id == existing.id
+    end
+
+    test "returns error when paddle customer not found" do
+      assert {:error, :customer_not_found} = Customers.get_or_create_by_paddle_id("ctm_unknown")
+    end
+  end
+
+  describe "create_customer/1" do
+    test "creates customer for user" do
+      user = user_fixture()
+
+      assert {:ok, customer} = Customers.create_customer(user)
+      assert customer.billable_type == "user"
+      assert customer.billable_id == user.id
+      assert customer.paddle_customer_id == nil
+    end
+
+    test "fails on duplicate" do
+      user = user_fixture()
+      _existing = billable_customer_fixture(user)
+
+      assert {:error, changeset} = Customers.create_customer(user)
+      assert changeset.errors[:billable_id] != nil
+    end
+  end
+
+  describe "link_paddle_customer/2" do
+    test "links paddle customer ID to existing customer" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user)
+
+      assert {:ok, updated} = Customers.link_paddle_customer(customer, "ctm_new123")
+      assert updated.paddle_customer_id == "ctm_new123"
+    end
+
+    test "updates existing paddle customer ID" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_old"})
+
+      assert {:ok, updated} = Customers.link_paddle_customer(customer, "ctm_new")
+      assert updated.paddle_customer_id == "ctm_new"
+    end
+  end
+
+  describe "ensure_paddle_customer/2" do
+    test "returns customer when paddle_customer_id exists" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_already"})
+
+      assert {:ok, result} = Customers.ensure_paddle_customer(user, customer)
+      assert result.id == customer.id
+      assert result.paddle_customer_id == "ctm_already"
+    end
+  end
+
+  describe "load_billable_entity/1" do
+    test "loads user entity from customer" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user)
+
+      assert {:ok, entity} = Customers.load_billable_entity(customer)
+      assert entity.id == user.id
+      assert entity.email == user.email
+    end
+
+    test "returns error when entity not found" do
+      customer = %BillableCustomer{
+        billable_type: "user",
+        billable_id: 999_999_999
+      }
+
+      assert {:error, :not_found} = Customers.load_billable_entity(customer)
+    end
+
+    test "returns error for unknown billable type" do
+      customer = %BillableCustomer{
+        billable_type: "organization",
+        billable_id: 123
+      }
+
+      assert {:error, :unknown_billable_type} = Customers.load_billable_entity(customer)
+    end
+  end
+end

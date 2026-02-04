@@ -1,0 +1,354 @@
+defmodule <%= @app_module %>.Billing.Paddle.WebhookHandlerTest do
+  use <%= @app_module %>.DataCase, async: false
+
+  import ExUnit.CaptureLog
+
+  alias <%= @app_module %>.Billing.Paddle.WebhookHandler
+  alias <%= @app_module %>.Billing.Schemas.{Subscription, Purchase}
+
+  import <%= @app_module %>.AccountsFixtures
+  import <%= @app_module %>.BillingFixtures
+
+  describe "handle_event/1 - subscription.created" do
+    test "creates a new subscription" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_123"})
+      product = product_fixture(%{paddle_price_id: "pri_123", type: "subscription"})
+
+      event = subscription_event("subscription.created", %{
+        "id" => "sub_123",
+        "customer_id" => customer.paddle_customer_id,
+        "status" => "active",
+        "items" => [%{"price" => %{"id" => product.paddle_price_id}, "quantity" => 1}],
+        "current_billing_period" => %{
+          "starts_at" => "2026-01-01T00:00:00Z",
+          "ends_at" => "2026-02-01T00:00:00Z"
+        }
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+
+      subscription = Repo.get_by!(Subscription, paddle_subscription_id: "sub_123")
+      assert subscription.billable_customer_id == customer.id
+      assert subscription.status == "active"
+      assert subscription.product_id == product.id
+    end
+
+    test "is idempotent - ignores duplicate events" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_456"})
+      _product = product_fixture(%{paddle_price_id: "pri_456", type: "subscription"})
+
+      _existing = subscription_fixture(user, %{paddle_subscription_id: "sub_456"})
+
+      event = subscription_event("subscription.created", %{
+        "id" => "sub_456",
+        "customer_id" => customer.paddle_customer_id,
+        "status" => "active",
+        "items" => [%{"price" => %{"id" => "pri_456"}, "quantity" => 1}],
+        "current_billing_period" => %{
+          "starts_at" => "2026-01-01T00:00:00Z",
+          "ends_at" => "2026-02-01T00:00:00Z"
+        }
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+
+      # Should still only have one subscription
+      assert Repo.aggregate(Subscription, :count) == 1
+    end
+
+    test "returns error when customer not found" do
+      event = subscription_event("subscription.created", %{
+        "id" => "sub_789",
+        "customer_id" => "ctm_nonexistent",
+        "status" => "active",
+        "items" => [%{"price" => %{"id" => "pri_789"}, "quantity" => 1}],
+        "current_billing_period" => %{
+          "starts_at" => "2026-01-01T00:00:00Z",
+          "ends_at" => "2026-02-01T00:00:00Z"
+        }
+      })
+
+      assert {:error, :customer_not_found} = WebhookHandler.handle_event(event)
+    end
+  end
+
+  describe "handle_event/1 - subscription.updated" do
+    test "updates subscription status" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_update"})
+      subscription = subscription_fixture(user, %{
+        paddle_subscription_id: "sub_update",
+        status: "trialing"
+      })
+
+      event = subscription_event("subscription.updated", %{
+        "id" => subscription.paddle_subscription_id,
+        "customer_id" => customer.paddle_customer_id,
+        "status" => "active",
+        "current_billing_period" => %{
+          "starts_at" => "2026-01-01T00:00:00Z",
+          "ends_at" => "2026-02-01T00:00:00Z"
+        }
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+
+      updated = Repo.get!(Subscription, subscription.id)
+      assert updated.status == "active"
+    end
+
+    test "creates subscription if not found (handles out-of-order webhooks)" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_ooo"})
+      _product = product_fixture(%{paddle_price_id: "pri_ooo", type: "subscription"})
+
+      event = subscription_event("subscription.updated", %{
+        "id" => "sub_ooo",
+        "customer_id" => customer.paddle_customer_id,
+        "status" => "active",
+        "items" => [%{"price" => %{"id" => "pri_ooo"}, "quantity" => 1}],
+        "current_billing_period" => %{
+          "starts_at" => "2026-01-01T00:00:00Z",
+          "ends_at" => "2026-02-01T00:00:00Z"
+        }
+      })
+
+      capture_log(fn ->
+        assert :ok = WebhookHandler.handle_event(event)
+      end)
+      assert Repo.get_by(Subscription, paddle_subscription_id: "sub_ooo")
+    end
+  end
+
+  describe "handle_event/1 - subscription.canceled" do
+    test "marks subscription as canceled with end date" do
+      user = user_fixture()
+      subscription = subscription_fixture(user, %{
+        paddle_subscription_id: "sub_cancel",
+        status: "active"
+      })
+
+      event = subscription_event("subscription.canceled", %{
+        "id" => subscription.paddle_subscription_id,
+        "status" => "canceled",
+        "canceled_at" => "2026-01-15T00:00:00Z",
+        "scheduled_change" => %{"effective_at" => "2026-02-01T00:00:00Z"}
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+
+      updated = Repo.get!(Subscription, subscription.id)
+      assert updated.status == "canceled"
+      assert updated.canceled_at != nil
+      assert updated.ends_at != nil
+    end
+
+    test "handles missing subscription gracefully" do
+      event = subscription_event("subscription.canceled", %{
+        "id" => "sub_nonexistent",
+        "status" => "canceled"
+      })
+
+      capture_log(fn ->
+        assert :ok = WebhookHandler.handle_event(event)
+      end)
+    end
+  end
+
+  describe "handle_event/1 - subscription.paused" do
+    test "marks subscription as paused" do
+      user = user_fixture()
+      subscription = subscription_fixture(user, %{
+        paddle_subscription_id: "sub_pause",
+        status: "active"
+      })
+
+      event = subscription_event("subscription.paused", %{
+        "id" => subscription.paddle_subscription_id,
+        "status" => "paused",
+        "paused_at" => "2026-01-15T00:00:00Z"
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+
+      updated = Repo.get!(Subscription, subscription.id)
+      assert updated.status == "paused"
+      assert updated.paused_at != nil
+    end
+  end
+
+  describe "handle_event/1 - subscription.resumed" do
+    test "clears paused status and reactivates" do
+      user = user_fixture()
+      subscription = subscription_fixture(user, %{
+        paddle_subscription_id: "sub_resume",
+        status: "paused",
+        paused_at: DateTime.utc_now(:second)
+      })
+
+      event = subscription_event("subscription.resumed", %{
+        "id" => subscription.paddle_subscription_id,
+        "status" => "active"
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+
+      updated = Repo.get!(Subscription, subscription.id)
+      assert updated.status == "active"
+      assert updated.paused_at == nil
+    end
+  end
+
+  describe "handle_event/1 - transaction.completed" do
+    test "creates a purchase for one-time product" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_txn"})
+      product = product_fixture(%{paddle_price_id: "pri_txn", type: "one_time"})
+
+      event = transaction_event("transaction.completed", %{
+        "id" => "txn_123",
+        "customer_id" => customer.paddle_customer_id,
+        "created_at" => "2026-01-15T00:00:00Z",
+        "items" => [%{"price" => %{"id" => product.paddle_price_id}, "quantity" => 1}]
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+
+      purchase = Repo.get_by!(Purchase, paddle_transaction_id: "txn_123")
+      assert purchase.billable_customer_id == customer.id
+      assert purchase.status == "completed"
+      assert purchase.product_id == product.id
+    end
+
+    test "creates purchase with credits for credit product" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_credits"})
+      product = product_fixture(%{
+        paddle_price_id: "pri_credits",
+        type: "credits",
+        metadata: %{"credits_amount" => 100}
+      })
+
+      event = transaction_event("transaction.completed", %{
+        "id" => "txn_credits",
+        "customer_id" => customer.paddle_customer_id,
+        "created_at" => "2026-01-15T00:00:00Z",
+        "items" => [%{"price" => %{"id" => product.paddle_price_id}, "quantity" => 1}]
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+
+      purchase = Repo.get_by!(Purchase, paddle_transaction_id: "txn_credits")
+      assert purchase.credits_granted == 100
+      assert purchase.credits_remaining == 100
+    end
+
+    test "ignores subscription transactions" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_sub_txn"})
+
+      event = transaction_event("transaction.completed", %{
+        "id" => "txn_sub",
+        "customer_id" => customer.paddle_customer_id,
+        "subscription_id" => "sub_123",
+        "created_at" => "2026-01-15T00:00:00Z"
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+
+      # Should not create a purchase
+      refute Repo.get_by(Purchase, paddle_transaction_id: "txn_sub")
+    end
+
+    test "is idempotent - ignores duplicate transactions" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_dup"})
+      _product = product_fixture(%{paddle_price_id: "pri_dup", type: "one_time"})
+
+      _existing = purchase_fixture(user, %{paddle_transaction_id: "txn_dup"})
+
+      event = transaction_event("transaction.completed", %{
+        "id" => "txn_dup",
+        "customer_id" => customer.paddle_customer_id,
+        "created_at" => "2026-01-15T00:00:00Z",
+        "items" => [%{"price" => %{"id" => "pri_dup"}, "quantity" => 1}]
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+      assert Repo.aggregate(Purchase, :count) == 1
+    end
+  end
+
+  describe "handle_event/1 - transaction.refunded" do
+    test "marks purchase as refunded and zeros credits" do
+      user = user_fixture()
+      purchase = purchase_fixture(user, %{
+        paddle_transaction_id: "txn_refund",
+        status: "completed",
+        credits_granted: 100,
+        credits_remaining: 75
+      })
+
+      event = transaction_event("transaction.refunded", %{
+        "id" => purchase.paddle_transaction_id
+      })
+
+      assert :ok = WebhookHandler.handle_event(event)
+
+      updated = Repo.get!(Purchase, purchase.id)
+      assert updated.status == "refunded"
+      assert updated.credits_remaining == 0
+    end
+
+    test "handles missing purchase gracefully" do
+      event = transaction_event("transaction.refunded", %{
+        "id" => "txn_nonexistent"
+      })
+
+      capture_log(fn ->
+        assert :ok = WebhookHandler.handle_event(event)
+      end)
+    end
+  end
+
+  describe "handle_event/1 - unhandled events" do
+    test "ignores unknown event types" do
+      event = %{
+        "event_type" => "customer.updated",
+        "data" => %{"id" => "ctm_123"}
+      }
+
+      assert :ok = WebhookHandler.handle_event(event)
+    end
+
+    test "returns error for invalid event format" do
+      assert {:error, :invalid_event} = WebhookHandler.handle_event(%{})
+      assert {:error, :invalid_event} = WebhookHandler.handle_event(nil)
+    end
+  end
+
+  # Helper functions for building webhook events
+
+  defp subscription_event(event_type, data) do
+    %{
+      "event_type" => event_type,
+      "data" => Map.merge(%{
+        "id" => "sub_default",
+        "customer_id" => "ctm_default",
+        "status" => "active"
+      }, data)
+    }
+  end
+
+  defp transaction_event(event_type, data) do
+    %{
+      "event_type" => event_type,
+      "data" => Map.merge(%{
+        "id" => "txn_default",
+        "customer_id" => "ctm_default"
+      }, data)
+    }
+  end
+end

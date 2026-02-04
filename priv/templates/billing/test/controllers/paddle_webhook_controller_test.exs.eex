@@ -1,0 +1,147 @@
+defmodule <%= @web_module %>.PaddleWebhookControllerTest do
+  use <%= @web_module %>.ConnCase, async: false
+
+  import ExUnit.CaptureLog
+  import <%= @app_module %>.AccountsFixtures
+  import <%= @app_module %>.BillingFixtures
+
+  @test_secret "whsec_test_webhook_secret"
+
+  setup do
+    Application.put_env(:<%= @app_name %>, <%= @app_module %>.Billing,
+      paddle: [webhook_secret: @test_secret]
+    )
+
+    on_exit(fn ->
+      Application.delete_env(:<%= @app_name %>, <%= @app_module %>.Billing)
+    end)
+
+    :ok
+  end
+
+  describe "POST /webhooks/paddle" do
+    test "processes valid subscription.created webhook", %{conn: conn} do
+      user = user_fixture()
+      customer = billable_customer_fixture(user, %{paddle_customer_id: "ctm_webhook_test"})
+      _product = product_fixture(%{paddle_price_id: "pri_webhook_test", type: "subscription"})
+
+      payload = %{
+        "event_type" => "subscription.created",
+        "data" => %{
+          "id" => "sub_webhook_test",
+          "customer_id" => customer.paddle_customer_id,
+          "status" => "active",
+          "items" => [%{"price" => %{"id" => "pri_webhook_test"}, "quantity" => 1}],
+          "current_billing_period" => %{
+            "starts_at" => "2026-01-01T00:00:00Z",
+            "ends_at" => "2026-02-01T00:00:00Z"
+          }
+        }
+      }
+
+      conn = post_webhook(conn, payload)
+
+      assert json_response(conn, 200)["status"] == "ok"
+    end
+
+    test "rejects request with missing signature", %{conn: conn} do
+      payload = %{"event_type" => "test", "data" => %{}}
+
+      capture_log(fn ->
+        conn =
+          conn
+          |> put_req_header("content-type", "application/json")
+          |> assign(:raw_body, Jason.encode!(payload))
+          |> post(~p"/webhooks/paddle", payload)
+
+        assert json_response(conn, 401)["status"] == "error"
+        assert json_response(conn, 401)["message"] == "Invalid signature"
+      end)
+    end
+
+    test "rejects request with invalid signature", %{conn: conn} do
+      payload = %{"event_type" => "test", "data" => %{}}
+      raw_body = Jason.encode!(payload)
+
+      capture_log(fn ->
+        conn =
+          conn
+          |> put_req_header("content-type", "application/json")
+          |> put_req_header("paddle-signature", "ts=123;h1=invalid")
+          |> assign(:raw_body, raw_body)
+          |> post(~p"/webhooks/paddle", payload)
+
+        assert json_response(conn, 401)["status"] == "error"
+      end)
+    end
+
+    test "rejects request with expired timestamp", %{conn: conn} do
+      payload = %{"event_type" => "test", "data" => %{}}
+      raw_body = Jason.encode!(payload)
+
+      old_ts = Integer.to_string(System.system_time(:second) - 400)
+      signed_payload = "#{old_ts}:#{raw_body}"
+
+      signature =
+        :crypto.mac(:hmac, :sha256, @test_secret, signed_payload)
+        |> Base.encode16(case: :lower)
+
+      capture_log(fn ->
+        conn =
+          conn
+          |> put_req_header("content-type", "application/json")
+          |> put_req_header("paddle-signature", "ts=#{old_ts};h1=#{signature}")
+          |> assign(:raw_body, raw_body)
+          |> post(~p"/webhooks/paddle", payload)
+
+        assert json_response(conn, 401)["status"] == "error"
+      end)
+    end
+
+    test "returns unprocessable entity when handler fails", %{conn: conn} do
+      payload = %{
+        "event_type" => "subscription.created",
+        "data" => %{
+          "id" => "sub_fail",
+          "customer_id" => "ctm_nonexistent",
+          "status" => "active"
+        }
+      }
+
+      capture_log(fn ->
+        conn = post_webhook(conn, payload)
+        assert json_response(conn, 422)["status"] == "error"
+      end)
+    end
+
+    test "handles unrecognized event types gracefully", %{conn: conn} do
+      payload = %{
+        "event_type" => "customer.updated",
+        "data" => %{"id" => "ctm_123"}
+      }
+
+      conn = post_webhook(conn, payload)
+
+      assert json_response(conn, 200)["status"] == "ok"
+    end
+  end
+
+  defp post_webhook(conn, payload) do
+    raw_body = Jason.encode!(payload)
+    ts = Integer.to_string(System.system_time(:second))
+
+    signed_payload = "#{ts}:#{raw_body}"
+
+    signature =
+      :crypto.mac(:hmac, :sha256, @test_secret, signed_payload)
+      |> Base.encode16(case: :lower)
+
+    paddle_signature = "ts=#{ts};h1=#{signature}"
+
+    conn
+    |> put_req_header("content-type", "application/json")
+    |> put_req_header("paddle-signature", paddle_signature)
+    |> assign(:raw_body, raw_body)
+    |> post(~p"/webhooks/paddle", payload)
+  end
+end

@@ -1,0 +1,262 @@
+defmodule <%= @app_module %>.Billing.PurchasesTest do
+  use <%= @app_module %>.DataCase, async: false
+
+  alias <%= @app_module %>.Billing.Purchases
+
+  import <%= @app_module %>.AccountsFixtures
+  import <%= @app_module %>.BillingFixtures
+
+  describe "has_purchased?/2" do
+    test "returns false when no purchase exists" do
+      user = user_fixture()
+
+      refute Purchases.has_purchased?(user, "course-elixir")
+    end
+
+    test "returns true with completed purchase" do
+      user = user_fixture()
+      product = one_time_product_fixture(%{slug: "course-elixir"})
+      _purchase = purchase_fixture(user, %{product: product, status: "completed"})
+
+      assert Purchases.has_purchased?(user, "course-elixir")
+    end
+
+    test "returns false with refunded purchase" do
+      user = user_fixture()
+      product = one_time_product_fixture(%{slug: "course-ruby"})
+      _purchase = purchase_fixture(user, %{product: product, status: "refunded"})
+
+      refute Purchases.has_purchased?(user, "course-ruby")
+    end
+
+    test "returns false when access is revoked" do
+      user = user_fixture()
+      product = one_time_product_fixture(%{slug: "course-python"})
+      _purchase = purchase_fixture(user, %{
+        product: product,
+        status: "completed",
+        access_revoked_at: DateTime.utc_now(:second)
+      })
+
+      refute Purchases.has_purchased?(user, "course-python")
+    end
+  end
+
+  describe "get_purchase/2" do
+    test "returns nil when no purchase exists" do
+      user = user_fixture()
+
+      assert Purchases.get_purchase(user, "nonexistent") == nil
+    end
+
+    test "returns purchase by product slug" do
+      user = user_fixture()
+      product = one_time_product_fixture(%{slug: "ebook"})
+      purchase = purchase_fixture(user, %{product: product})
+
+      result = Purchases.get_purchase(user, "ebook")
+      assert result.id == purchase.id
+    end
+
+    test "returns most recent purchase when multiple exist" do
+      user = user_fixture()
+      product = one_time_product_fixture(%{slug: "credits-pack"})
+      old_time = DateTime.add(DateTime.utc_now(:second), -1, :day)
+      new_time = DateTime.utc_now(:second)
+
+      _old = purchase_fixture(user, %{product: product, credits_granted: 50, purchased_at: old_time})
+      _new = purchase_fixture(user, %{product: product, credits_granted: 100, purchased_at: new_time})
+
+      result = Purchases.get_purchase(user, "credits-pack")
+      # The most recent purchase (ordered by purchased_at desc) should have 100 credits
+      assert result.credits_granted == 100
+    end
+  end
+
+  describe "list_purchases/1" do
+    test "returns empty list when no purchases" do
+      user = user_fixture()
+
+      assert Purchases.list_purchases(user) == []
+    end
+
+    test "returns all purchases for user" do
+      user = user_fixture()
+      _purchase1 = purchase_fixture(user)
+      _purchase2 = purchase_fixture(user)
+
+      purchases = Purchases.list_purchases(user)
+      assert length(purchases) == 2
+    end
+
+    test "preloads product" do
+      user = user_fixture()
+      product = one_time_product_fixture(%{name: "Premium Course"})
+      _purchase = purchase_fixture(user, %{product: product})
+
+      [purchase] = Purchases.list_purchases(user)
+      assert purchase.product.name == "Premium Course"
+    end
+
+    test "orders by purchased_at desc" do
+      user = user_fixture()
+      old_time = DateTime.add(DateTime.utc_now(:second), -1, :day)
+      new_time = DateTime.utc_now(:second)
+
+      _p1 = purchase_fixture(user, %{credits_granted: 100, purchased_at: old_time})
+      _p2 = purchase_fixture(user, %{credits_granted: 200, purchased_at: new_time})
+
+      [first, second] = Purchases.list_purchases(user)
+      # Most recent (200 credits) should be first
+      assert first.credits_granted == 200
+      assert second.credits_granted == 100
+    end
+  end
+
+  describe "get_by_paddle_id/1" do
+    test "returns nil when not found" do
+      assert Purchases.get_by_paddle_id("txn_nonexistent") == nil
+    end
+
+    test "returns purchase by paddle transaction ID" do
+      user = user_fixture()
+      purchase = purchase_fixture(user, %{paddle_transaction_id: "txn_test123"})
+
+      result = Purchases.get_by_paddle_id("txn_test123")
+      assert result.id == purchase.id
+    end
+  end
+
+  describe "create_from_paddle/1" do
+    test "creates purchase with paddle data" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user)
+      product = one_time_product_fixture()
+
+      attrs = %{
+        billable_customer_id: customer.id,
+        product_id: product.id,
+        paddle_transaction_id: "txn_paddle123",
+        status: "completed",
+        purchased_at: DateTime.utc_now(:second)
+      }
+
+      assert {:ok, purchase} = Purchases.create_from_paddle(attrs)
+      assert purchase.paddle_transaction_id == "txn_paddle123"
+      assert purchase.status == "completed"
+    end
+
+    test "creates purchase with credits" do
+      user = user_fixture()
+      customer = billable_customer_fixture(user)
+      product = credit_product_fixture()
+
+      attrs = %{
+        billable_customer_id: customer.id,
+        product_id: product.id,
+        paddle_transaction_id: "txn_credits",
+        status: "completed",
+        credits_granted: 100,
+        credits_remaining: 100,
+        purchased_at: DateTime.utc_now(:second)
+      }
+
+      assert {:ok, purchase} = Purchases.create_from_paddle(attrs)
+      assert purchase.credits_granted == 100
+      assert purchase.credits_remaining == 100
+    end
+  end
+
+  describe "grant_purchase/4" do
+    test "creates a granted purchase" do
+      user = user_fixture()
+      admin = user_fixture()
+      _product = one_time_product_fixture(%{slug: "lifetime-access"})
+
+      assert {:ok, purchase} = Purchases.grant_purchase(
+        user,
+        "lifetime-access",
+        admin.id,
+        grant_reason: "Early supporter"
+      )
+
+      assert purchase.status == "completed"
+      assert purchase.granted_by == admin.id
+      assert purchase.grant_reason == "Early supporter"
+    end
+
+    test "can grant credits" do
+      user = user_fixture()
+      admin = user_fixture()
+      _product = credit_product_fixture(%{slug: "credit-pack"})
+
+      {:ok, purchase} = Purchases.grant_purchase(
+        user,
+        "credit-pack",
+        admin.id,
+        credits_granted: 500
+      )
+
+      assert purchase.credits_granted == 500
+      assert purchase.credits_remaining == 500
+    end
+
+    test "can set credit expiration" do
+      user = user_fixture()
+      admin = user_fixture()
+      _product = credit_product_fixture(%{slug: "promo-credits"})
+      expires = DateTime.add(DateTime.utc_now(), 30, :day)
+
+      {:ok, purchase} = Purchases.grant_purchase(
+        user,
+        "promo-credits",
+        admin.id,
+        credits_granted: 100,
+        credits_expire_at: expires
+      )
+
+      assert purchase.credits_expire_at != nil
+    end
+  end
+
+  describe "refund/1" do
+    test "marks purchase as refunded" do
+      user = user_fixture()
+      purchase = purchase_fixture(user, %{status: "completed"})
+
+      assert {:ok, updated} = Purchases.refund(purchase)
+      assert updated.status == "refunded"
+    end
+
+    test "zeros out remaining credits" do
+      user = user_fixture()
+      purchase = purchase_fixture(user, %{
+        status: "completed",
+        credits_granted: 100,
+        credits_remaining: 75
+      })
+
+      assert {:ok, updated} = Purchases.refund(purchase)
+      assert updated.credits_remaining == 0
+    end
+
+    test "sets access_revoked_at" do
+      user = user_fixture()
+      purchase = purchase_fixture(user, %{status: "completed"})
+
+      assert {:ok, updated} = Purchases.refund(purchase)
+      assert updated.access_revoked_at != nil
+    end
+  end
+
+  describe "revoke_access/1" do
+    test "sets access_revoked_at without changing status" do
+      user = user_fixture()
+      purchase = purchase_fixture(user, %{status: "completed"})
+
+      assert {:ok, updated} = Purchases.revoke_access(purchase)
+      assert updated.access_revoked_at != nil
+      assert updated.status == "completed"
+    end
+  end
+end

@@ -1,0 +1,27 @@
+defmodule <%= @web_module %>.Plugs.CacheRawBody do
+  @moduledoc """
+  Custom body reader that caches the raw body for webhook signature verification.
+
+  This module is used by Plug.Parsers to read and cache the raw request body
+  before JSON parsing. The cached body is stored in conn.assigns[:raw_body]
+  for use in signature verification.
+  """
+
+  @doc """
+  Reads the request body and caches it.
+  """
+  def read_body(conn, opts) do
+    case Plug.Conn.read_body(conn, opts) do
+      {:ok, body, conn} ->
+        conn = Plug.Conn.assign(conn, :raw_body, body)
+        {:ok, body, conn}
+
+      {:more, body, conn} ->
+        conn = Plug.Conn.assign(conn, :raw_body, body)
+        {:more, body, conn}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+end
