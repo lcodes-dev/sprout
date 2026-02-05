@@ -1133,11 +1133,12 @@ defmodule Mix.Tasks.Sprout.Install do
         end
         """
 
-        # Add routes before the final end
+        # Add routes before the final end of the module
+        # Match the last `end` in the file which closes the module
         updated_string = String.replace(
           node_string,
-          ~r/(# Routes for authenticated users.*?end\n  end)/s,
-          "\\1\n\n  #{String.trim(webhook_routes)}\n\n  #{String.trim(billing_routes)}"
+          ~r/(\n\s*)end\s*$/,
+          "\n\n  #{String.trim(webhook_routes)}\n\n  #{String.trim(billing_routes)}\\1end"
         )
 
         {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
