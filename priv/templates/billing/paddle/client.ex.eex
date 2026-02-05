@@ -127,10 +127,41 @@ defmodule <%= @app_module %>.Billing.Paddle.Client do
   end
 
   @doc """
-  Lists all prices for a product.
+  Lists all products.
+
+  ## Options
+    - status: Filter by status (e.g., "active", "archived")
   """
-  def list_prices(product_id) do
-    get("/prices", %{product_id: product_id})
+  def list_products(opts \\ []) do
+    params =
+      opts
+      |> Keyword.take([:status])
+      |> Enum.into(%{})
+
+    get("/products", params)
+  end
+
+  @doc """
+  Gets a product by its ID.
+  """
+  def get_product(product_id) do
+    get("/products/#{product_id}")
+  end
+
+  @doc """
+  Lists all prices.
+
+  ## Options
+    - product_id: Filter by product ID
+    - status: Filter by status (e.g., "active", "archived")
+  """
+  def list_prices(opts \\ []) do
+    params =
+      opts
+      |> Keyword.take([:product_id, :status])
+      |> Enum.into(%{})
+
+    get("/prices", params)
   end
 
   @doc """

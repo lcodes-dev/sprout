@@ -66,7 +66,7 @@ defmodule <%= @web_module %>.BillingController do
         price_id: price_id,
         customer_email: user.email,
         paddle_customer_id: customer.paddle_customer_id,
-        success_url: url(~p"/billing?checkout=success"),
+        success_url: url(~p"/billing") <> "?checkout=success",
         client_token: paddle_client_token()
       }
 

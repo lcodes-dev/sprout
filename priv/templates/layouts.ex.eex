@@ -56,13 +56,13 @@ defmodule <%= @web_module %>.Layouts do
             </div>
             <div class="flex items-center gap-4">
               <.theme_toggle />
-              <%= if @user do %>
+              <%%= if @user do %>
                 <a href={~p"/dashboard"} class="btn-ghost btn-sm hidden sm:inline-flex">Dashboard</a>
                 <.link href={~p"/users/log-out"} method="delete" class="btn btn-sm">Sign out</.link>
-              <% else %>
+              <%% else %>
                 <a href={~p"/users/log-in"} class="btn-ghost btn-sm hidden sm:inline-flex">Sign in</a>
                 <a href={~p"/users/register"} class="btn btn-sm">Get Started</a>
-              <% end %>
+              <%% end %>
             </div>
           </div>
         </nav>
@@ -104,7 +104,7 @@ defmodule <%= @web_module %>.Layouts do
           </div>
           <div class="mt-8 border-t border-border pt-8">
             <p class="text-sm text-muted-foreground text-center">
-              &copy; <%= DateTime.utc_now().year %> All rights reserved.
+              &copy; <%%= DateTime.utc_now().year %> All rights reserved.
             </p>
           </div>
         </div>
@@ -240,7 +240,7 @@ defmodule <%= @web_module %>.Layouts do
             <.avatar :if={!@user} fallback="U" class="size-8" />
             <div class="flex-1 min-w-0">
               <p class="text-sm font-medium truncate">
-                <%= if @user, do: @user.email, else: "User" %>
+                <%%= if @user, do: @user.email, else: "User" %>
               </p>
               <p class="text-xs text-muted-foreground">Account</p>
             </div>
