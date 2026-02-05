@@ -2,7 +2,7 @@ defmodule <%= @app_module %>.AccountsTest do
   use <%= @app_module %>.DataCase, async: false
 
   alias <%= @app_module %>.Accounts
-  alias <%= @app_module %>.Accounts.{User, UserToken}
+  alias <%= @app_module %>.Accounts.Schemas.{User, UserToken}
 
   import <%= @app_module %>.AccountsFixtures
 
