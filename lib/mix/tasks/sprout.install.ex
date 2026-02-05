@@ -804,7 +804,7 @@ defmodule Mix.Tasks.Sprout.Install do
 
     # Create fixtures
     fixtures_content = render_template("auth/test/support/fixtures/accounts_fixtures.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "test/support/fixtures/accounts_fixtures.ex", fixtures_content, on_exists: :skip)
+    igniter = Igniter.create_new_file(igniter, "test/support/accounts_fixtures.ex", fixtures_content, on_exists: :skip)
 
     # Create accounts test
     accounts_test_content = render_template("auth/test/accounts_test.exs.eex", assigns)
@@ -1078,7 +1078,7 @@ defmodule Mix.Tasks.Sprout.Install do
 
     # Create fixtures
     fixtures_content = render_template("billing/test/support/fixtures/billing_fixtures.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "test/support/fixtures/billing_fixtures.ex", fixtures_content, on_exists: :skip)
+    igniter = Igniter.create_new_file(igniter, "test/support/billing_fixtures.ex", fixtures_content, on_exists: :skip)
 
     # Create billing test
     billing_test_content = render_template("billing/test/billing_test.exs.eex", assigns)
@@ -1210,10 +1210,10 @@ defmodule Mix.Tasks.Sprout.Install do
       {"billing/test/paddle/webhook_handler_test.exs.eex", "test/#{app_name}/billing/paddle/webhook_handler_test.exs"}
     ]
 
-    # Create controller tests
+    # Create controller tests (placed directly in _web folder, not in controllers/ subdirectory)
     controller_tests = [
-      {"billing/test/controllers/billing_controller_test.exs.eex", "test/#{app_name}_web/controllers/billing_controller_test.exs"},
-      {"billing/test/controllers/paddle_webhook_controller_test.exs.eex", "test/#{app_name}_web/controllers/paddle_webhook_controller_test.exs"}
+      {"billing/test/controllers/billing_controller_test.exs.eex", "test/#{app_name}_web/billing_controller_test.exs"},
+      {"billing/test/controllers/paddle_webhook_controller_test.exs.eex", "test/#{app_name}_web/paddle_webhook_controller_test.exs"}
     ]
 
     igniter
@@ -1265,11 +1265,51 @@ defmodule Mix.Tasks.Sprout.Install do
         {:ok, zipper}
       else
         # Update Plug.Parsers to include body_reader
+        # Handle multiple formats:
+        # - plug Plug.Parsers, (no parens)
+        # - plug(Plug.Parsers, (with parens)
+        # The pattern captures everything up to and including pass: ["*/*"],
+        # and inserts body_reader after it
         updated_string = String.replace(
           node_string,
-          ~r/(plug Plug\.Parsers,\s*parsers: \[:urlencoded, :multipart, :json\],\s*pass: \["\*\/\*"\],)/s,
+          ~r/(plug\s*\(?\s*Plug\.Parsers,\s*parsers:\s*\[:urlencoded,\s*:multipart,\s*:json\],\s*pass:\s*\["\*\/\*"\],)/s,
           "\\1\n    body_reader: {#{web_module}.Plugs.CacheRawBody, :read_body, []},"
         )
+
+        # If the first pattern didn't match, try an alternative pattern that looks for
+        # the json_decoder line and inserts body_reader before it
+        updated_string =
+          if updated_string == node_string do
+            String.replace(
+              node_string,
+              ~r/(plug\s*\(?\s*Plug\.Parsers,\s*[^)]*?pass:\s*\["\*\/\*"\],?\s*\n)(\s*json_decoder:)/s,
+              "\\1    body_reader: {#{web_module}.Plugs.CacheRawBody, :read_body, []},\n\\2"
+            )
+          else
+            updated_string
+          end
+
+        # If still no match, try a more general pattern
+        updated_string =
+          if updated_string == node_string do
+            # Match any Plug.Parsers with pass option, insert body_reader before json_decoder
+            String.replace(
+              node_string,
+              ~r/(plug\(?\s*Plug\.Parsers,)([^)]*?)(json_decoder:)/s,
+              fn _, plug_start, middle, json_decoder ->
+                if String.contains?(middle, "body_reader") do
+                  # Already has body_reader, don't modify
+                  "#{plug_start}#{middle}#{json_decoder}"
+                else
+                  # Add body_reader before json_decoder
+                  "#{plug_start}#{String.trim_trailing(middle)}\n    body_reader: {#{web_module}.Plugs.CacheRawBody, :read_body, []},\n    #{json_decoder}"
+                end
+              end
+            )
+          else
+            updated_string
+          end
+
         {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
       end
     end)
