@@ -1,0 +1,121 @@
+defmodule <%= @app_module %>.Announcements do
+  @moduledoc """
+  The Announcements context.
+
+  Manages announcement banners that are displayed site-wide at the top of every page.
+  Banners can be scheduled with start/end dates and toggled active/inactive.
+  """
+
+  import Ecto.Query, warn: false
+  alias <%= @app_module %>.Repo
+  alias <%= @app_module %>.Announcements.Banner
+
+  @doc """
+  Returns the list of currently active banners.
+
+  A banner is considered active when:
+  - `is_active` is true
+  - `starts_at` is nil or in the past
+  - `ends_at` is nil or in the future
+
+  Results are ordered by most recently created first.
+
+  ## Examples
+
+      iex> list_active_banners()
+      [%Banner{}, ...]
+
+  """
+  def list_active_banners do
+    now = DateTime.utc_now()
+
+    from(b in Banner,
+      where: b.is_active == true,
+      where: is_nil(b.starts_at) or b.starts_at <= ^now,
+      where: is_nil(b.ends_at) or b.ends_at > ^now,
+      order_by: [desc: b.inserted_at]
+    )
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets a single banner.
+
+  Raises `Ecto.NoResultsError` if the Banner does not exist.
+
+  ## Examples
+
+      iex> get_banner!(123)
+      %Banner{}
+
+      iex> get_banner!(456)
+      ** (Ecto.NoResultsError)
+
+  """
+  def get_banner!(id), do: Repo.get!(Banner, id)
+
+  @doc """
+  Creates a banner.
+
+  ## Examples
+
+      iex> create_banner(%{message: "Hello!"})
+      {:ok, %Banner{}}
+
+      iex> create_banner(%{message: nil})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def create_banner(attrs \\ %{}) do
+    %Banner{}
+    |> Banner.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates a banner.
+
+  ## Examples
+
+      iex> update_banner(banner, %{message: "Updated!"})
+      {:ok, %Banner{}}
+
+      iex> update_banner(banner, %{message: nil})
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def update_banner(%Banner{} = banner, attrs) do
+    banner
+    |> Banner.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Deletes a banner.
+
+  ## Examples
+
+      iex> delete_banner(banner)
+      {:ok, %Banner{}}
+
+      iex> delete_banner(banner)
+      {:error, %Ecto.Changeset{}}
+
+  """
+  def delete_banner(%Banner{} = banner) do
+    Repo.delete(banner)
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking banner changes.
+
+  ## Examples
+
+      iex> change_banner(banner)
+      %Ecto.Changeset{data: %Banner{}}
+
+  """
+  def change_banner(%Banner{} = banner, attrs \\ %{}) do
+    Banner.changeset(banner, attrs)
+  end
+end

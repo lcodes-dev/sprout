@@ -1,0 +1,157 @@
+defmodule <%= @app_module %>.AnnouncementsTest do
+  use <%= @app_module %>.DataCase, async: true
+
+  alias <%= @app_module %>.Announcements
+  alias <%= @app_module %>.Announcements.Banner
+
+  import <%= @app_module %>.AnnouncementsFixtures
+
+  describe "list_active_banners/0" do
+    test "returns only active banners" do
+      active = banner_fixture(%{is_active: true})
+      _inactive = banner_fixture(%{is_active: false})
+
+      banners = Announcements.list_active_banners()
+      assert length(banners) == 1
+      assert hd(banners).id == active.id
+    end
+
+    test "excludes banners that haven't started yet" do
+      future = DateTime.utc_now() |> DateTime.add(3600, :second)
+      _not_started = banner_fixture(%{starts_at: future})
+      started = banner_fixture(%{starts_at: nil})
+
+      banners = Announcements.list_active_banners()
+      assert length(banners) == 1
+      assert hd(banners).id == started.id
+    end
+
+    test "excludes banners that have ended" do
+      past = DateTime.utc_now() |> DateTime.add(-3600, :second)
+      _ended = banner_fixture(%{ends_at: past})
+      active = banner_fixture(%{ends_at: nil})
+
+      banners = Announcements.list_active_banners()
+      assert length(banners) == 1
+      assert hd(banners).id == active.id
+    end
+
+    test "returns banners within their scheduled window" do
+      past = DateTime.utc_now() |> DateTime.add(-3600, :second)
+      future = DateTime.utc_now() |> DateTime.add(3600, :second)
+
+      scheduled = banner_fixture(%{starts_at: past, ends_at: future})
+      banners = Announcements.list_active_banners()
+
+      assert length(banners) == 1
+      assert hd(banners).id == scheduled.id
+    end
+
+    test "orders by most recently created first" do
+      first = banner_fixture()
+      second = banner_fixture()
+
+      banners = Announcements.list_active_banners()
+      assert [%{id: second_id}, %{id: first_id}] = banners
+      assert second_id == second.id
+      assert first_id == first.id
+    end
+  end
+
+  describe "get_banner!/1" do
+    test "returns the banner with the given id" do
+      banner = banner_fixture()
+      assert Announcements.get_banner!(banner.id).id == banner.id
+    end
+
+    test "raises if id is invalid" do
+      assert_raise Ecto.NoResultsError, fn ->
+        Announcements.get_banner!(-1)
+      end
+    end
+  end
+
+  describe "create_banner/1" do
+    test "creates a banner with valid data" do
+      attrs = %{message: "New feature available!", bg_color: "primary"}
+      assert {:ok, %Banner{} = banner} = Announcements.create_banner(attrs)
+      assert banner.message == "New feature available!"
+      assert banner.bg_color == "primary"
+      assert banner.is_active == true
+    end
+
+    test "creates a banner with link" do
+      attrs = %{message: "Check it out", link_text: "Learn more", link_url: "https://example.com"}
+      assert {:ok, %Banner{} = banner} = Announcements.create_banner(attrs)
+      assert banner.link_text == "Learn more"
+      assert banner.link_url == "https://example.com"
+    end
+
+    test "returns error for missing message" do
+      assert {:error, changeset} = Announcements.create_banner(%{})
+      assert %{message: ["can't be blank"]} = errors_on(changeset)
+    end
+
+    test "returns error for invalid bg_color" do
+      attrs = %{message: "Test", bg_color: "rainbow"}
+      assert {:error, changeset} = Announcements.create_banner(attrs)
+      assert %{bg_color: ["is invalid"]} = errors_on(changeset)
+    end
+
+    test "returns error when link_text is provided without link_url" do
+      attrs = %{message: "Test", link_text: "Click here"}
+      assert {:error, changeset} = Announcements.create_banner(attrs)
+      assert %{link_url: ["is required when link text is provided"]} = errors_on(changeset)
+    end
+
+    test "returns error when link_url is provided without link_text" do
+      attrs = %{message: "Test", link_url: "https://example.com"}
+      assert {:error, changeset} = Announcements.create_banner(attrs)
+      assert %{link_text: ["is required when link URL is provided"]} = errors_on(changeset)
+    end
+
+    test "returns error when ends_at is before starts_at" do
+      now = DateTime.utc_now()
+      past = DateTime.add(now, -3600, :second)
+
+      attrs = %{message: "Test", starts_at: now, ends_at: past}
+      assert {:error, changeset} = Announcements.create_banner(attrs)
+      assert %{ends_at: ["must be after starts_at"]} = errors_on(changeset)
+    end
+  end
+
+  describe "update_banner/2" do
+    test "updates the banner with valid data" do
+      banner = banner_fixture()
+      assert {:ok, %Banner{} = updated} = Announcements.update_banner(banner, %{message: "Updated!"})
+      assert updated.message == "Updated!"
+    end
+
+    test "returns error with invalid data" do
+      banner = banner_fixture()
+      assert {:error, changeset} = Announcements.update_banner(banner, %{message: nil})
+      assert %{message: ["can't be blank"]} = errors_on(changeset)
+    end
+
+    test "deactivates a banner" do
+      banner = banner_fixture(%{is_active: true})
+      assert {:ok, %Banner{} = updated} = Announcements.update_banner(banner, %{is_active: false})
+      assert updated.is_active == false
+    end
+  end
+
+  describe "delete_banner/1" do
+    test "deletes the banner" do
+      banner = banner_fixture()
+      assert {:ok, %Banner{}} = Announcements.delete_banner(banner)
+      assert_raise Ecto.NoResultsError, fn -> Announcements.get_banner!(banner.id) end
+    end
+  end
+
+  describe "change_banner/2" do
+    test "returns a banner changeset" do
+      banner = banner_fixture()
+      assert %Ecto.Changeset{} = Announcements.change_banner(banner)
+    end
+  end
+end
