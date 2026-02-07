@@ -1,0 +1,47 @@
+<Layouts.dashboard flash={@flash} current_scope={@current_scope}>
+  <div class="max-w-2xl">
+    <div class="mb-6">
+      <a
+        href={~p"/admin/feature-flags"}
+        class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M15 19l-7-7 7-7"
+          />
+        </svg>
+        Back to Feature Flags
+      </a>
+    </div>
+
+    <h1 class="text-2xl font-bold mb-8">
+      {if @changeset.data.id, do: "Edit Feature Flag", else: "New Feature Flag"}
+    </h1>
+
+    <.simple_form :let={f} for={@changeset} action={@action}>
+      <.error :if={@changeset.action}>
+        Oops, something went wrong! Please check the errors below.
+      </.error>
+
+      <.input field={f[:name]} type="text" label="Name" placeholder="my_feature" />
+
+      <.input
+        field={f[:description]}
+        type="textarea"
+        label="Description"
+        placeholder="Describe what this feature flag controls..."
+      />
+
+      <.input field={f[:enabled]} type="checkbox" label="Enabled" />
+
+      <:actions>
+        <.button type="submit">
+          {if @changeset.data.id, do: "Update Flag", else: "Create Flag"}
+        </.button>
+      </:actions>
+    </.simple_form>
+  </div>
+</Layouts.dashboard>

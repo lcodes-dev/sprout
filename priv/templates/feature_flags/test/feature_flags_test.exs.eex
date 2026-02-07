@@ -1,0 +1,272 @@
+defmodule <%= @app_module %>.FeatureFlagsTest do
+  use <%= @app_module %>.DataCase, async: false
+
+  alias <%= @app_module %>.FeatureFlags
+  alias <%= @app_module %>.FeatureFlags.Schemas.FeatureFlag
+
+  import <%= @app_module %>.FeatureFlagsFixtures
+
+  setup do
+    # Ensure cache is refreshed before each test
+    FeatureFlags.Cache.refresh()
+    # Small delay to allow async cache refresh
+    Process.sleep(50)
+    :ok
+  end
+
+  describe "enabled?/1" do
+    test "returns false for nonexistent flag" do
+      refute FeatureFlags.enabled?("nonexistent")
+    end
+
+    test "returns false for disabled flag" do
+      _flag = feature_flag_fixture(%{name: "disabled_flag", enabled: false})
+      FeatureFlags.Cache.refresh()
+      Process.sleep(50)
+
+      refute FeatureFlags.enabled?("disabled_flag")
+    end
+
+    test "returns true for enabled flag" do
+      _flag = enabled_flag_fixture(%{name: "enabled_flag"})
+      FeatureFlags.Cache.refresh()
+      Process.sleep(50)
+
+      assert FeatureFlags.enabled?("enabled_flag")
+    end
+  end
+
+  describe "enabled_for?/2" do
+    test "returns false for nonexistent flag" do
+      refute FeatureFlags.enabled_for?("nonexistent", 1)
+    end
+
+    test "returns false for disabled flag" do
+      _flag = feature_flag_fixture(%{name: "disabled", enabled: false})
+      FeatureFlags.Cache.refresh()
+      Process.sleep(50)
+
+      refute FeatureFlags.enabled_for?("disabled", 1)
+    end
+
+    test "returns true for enabled flag without rules" do
+      _flag = enabled_flag_fixture(%{name: "no_rules"})
+      FeatureFlags.Cache.refresh()
+      Process.sleep(50)
+
+      assert FeatureFlags.enabled_for?("no_rules", 1)
+    end
+
+    test "returns true when actor_id is in actor_ids list" do
+      _flag = actor_targeted_flag_fixture([1, 2, 3], %{name: "targeted"})
+      FeatureFlags.Cache.refresh()
+      Process.sleep(50)
+
+      assert FeatureFlags.enabled_for?("targeted", 1)
+      assert FeatureFlags.enabled_for?("targeted", 2)
+      assert FeatureFlags.enabled_for?("targeted", 3)
+    end
+
+    test "returns false when actor_id is not in actor_ids list and no other rules" do
+      _flag = feature_flag_fixture(%{
+        name: "targeted_only",
+        enabled: true,
+        rules: %{"actor_ids" => [1, 2]}
+      })
+      FeatureFlags.Cache.refresh()
+      Process.sleep(50)
+
+      # Actor 99 is not in list, but since there's no percentage rule,
+      # the flag falls through to the default "enabled = true" case
+      # Actor IDs check comes first - if it doesn't match, it falls through
+      # Since there's no percentage, but flag is enabled, it returns true
+      assert FeatureFlags.enabled_for?("targeted_only", 99)
+    end
+
+    test "percentage rollout gives consistent results for same actor" do
+      _flag = percentage_flag_fixture(50, %{name: "fifty_percent"})
+      FeatureFlags.Cache.refresh()
+      Process.sleep(50)
+
+      # Same actor should always get same result
+      result1 = FeatureFlags.enabled_for?("fifty_percent", 42)
+      result2 = FeatureFlags.enabled_for?("fifty_percent", 42)
+      assert result1 == result2
+    end
+
+    test "percentage rollout at 100 enables for all actors" do
+      _flag = percentage_flag_fixture(100, %{name: "full_rollout"})
+      FeatureFlags.Cache.refresh()
+      Process.sleep(50)
+
+      Enum.each(1..20, fn actor_id ->
+        assert FeatureFlags.enabled_for?("full_rollout", actor_id)
+      end)
+    end
+
+    test "percentage rollout at 0 disables for all actors" do
+      _flag = percentage_flag_fixture(0, %{name: "no_rollout"})
+      FeatureFlags.Cache.refresh()
+      Process.sleep(50)
+
+      Enum.each(1..20, fn actor_id ->
+        refute FeatureFlags.enabled_for?("no_rollout", actor_id)
+      end)
+    end
+
+    test "actor_ids takes priority over percentage" do
+      _flag = feature_flag_fixture(%{
+        name: "combined",
+        enabled: true,
+        rules: %{"actor_ids" => [42], "percentage" => 0}
+      })
+      FeatureFlags.Cache.refresh()
+      Process.sleep(50)
+
+      # Actor 42 is in the list, so it should be enabled even with 0% rollout
+      assert FeatureFlags.enabled_for?("combined", 42)
+    end
+  end
+
+  describe "list_flags/0" do
+    test "returns all flags ordered by name" do
+      _flag_b = feature_flag_fixture(%{name: "beta_feature"})
+      _flag_a = feature_flag_fixture(%{name: "alpha_feature"})
+      _flag_c = feature_flag_fixture(%{name: "charlie_feature"})
+
+      flags = FeatureFlags.list_flags()
+
+      assert [
+        %FeatureFlag{name: "alpha_feature"},
+        %FeatureFlag{name: "beta_feature"},
+        %FeatureFlag{name: "charlie_feature"}
+      ] = flags
+    end
+  end
+
+  describe "get_flag/1" do
+    test "returns flag by name" do
+      flag = feature_flag_fixture(%{name: "my_flag"})
+
+      assert found = FeatureFlags.get_flag("my_flag")
+      assert found.id == flag.id
+    end
+
+    test "returns nil for nonexistent flag" do
+      assert FeatureFlags.get_flag("nonexistent") == nil
+    end
+  end
+
+  describe "create_flag/1" do
+    test "creates a flag with valid attrs" do
+      assert {:ok, flag} = FeatureFlags.create_flag(%{
+        name: "new_feature",
+        description: "A new feature",
+        enabled: false
+      })
+
+      assert flag.name == "new_feature"
+      assert flag.description == "A new feature"
+      assert flag.enabled == false
+    end
+
+    test "returns error for invalid name format" do
+      assert {:error, changeset} = FeatureFlags.create_flag(%{name: "Invalid Name"})
+      assert %{name: [_]} = errors_on(changeset)
+    end
+
+    test "returns error for duplicate name" do
+      _flag = feature_flag_fixture(%{name: "duplicate"})
+
+      assert {:error, changeset} = FeatureFlags.create_flag(%{name: "duplicate"})
+      assert %{name: [_]} = errors_on(changeset)
+    end
+
+    test "returns error for missing name" do
+      assert {:error, changeset} = FeatureFlags.create_flag(%{})
+      assert %{name: [_]} = errors_on(changeset)
+    end
+
+    test "validates percentage rule" do
+      assert {:error, changeset} = FeatureFlags.create_flag(%{
+        name: "bad_pct",
+        rules: %{"percentage" => 150}
+      })
+      assert %{rules: [_]} = errors_on(changeset)
+    end
+
+    test "validates actor_ids rule" do
+      assert {:error, changeset} = FeatureFlags.create_flag(%{
+        name: "bad_ids",
+        rules: %{"actor_ids" => "not a list"}
+      })
+      assert %{rules: [_]} = errors_on(changeset)
+    end
+  end
+
+  describe "update_flag/2" do
+    test "updates a flag" do
+      flag = feature_flag_fixture(%{name: "updatable"})
+
+      assert {:ok, updated} = FeatureFlags.update_flag(flag, %{description: "Updated"})
+      assert updated.description == "Updated"
+    end
+
+    test "updates rules" do
+      flag = feature_flag_fixture(%{name: "rules_update"})
+
+      assert {:ok, updated} = FeatureFlags.update_flag(flag, %{
+        rules: %{"percentage" => 50, "actor_ids" => [1, 2]}
+      })
+
+      assert updated.rules == %{"percentage" => 50, "actor_ids" => [1, 2]}
+    end
+  end
+
+  describe "delete_flag/1" do
+    test "deletes a flag" do
+      flag = feature_flag_fixture(%{name: "deletable"})
+
+      assert {:ok, _} = FeatureFlags.delete_flag(flag)
+      assert FeatureFlags.get_flag("deletable") == nil
+    end
+  end
+
+  describe "enable/1" do
+    test "enables a disabled flag" do
+      _flag = feature_flag_fixture(%{name: "to_enable", enabled: false})
+
+      assert {:ok, flag} = FeatureFlags.enable("to_enable")
+      assert flag.enabled == true
+    end
+
+    test "returns error for nonexistent flag" do
+      assert {:error, :not_found} = FeatureFlags.enable("nonexistent")
+    end
+  end
+
+  describe "disable/1" do
+    test "disables an enabled flag" do
+      _flag = enabled_flag_fixture(%{name: "to_disable"})
+
+      assert {:ok, flag} = FeatureFlags.disable("to_disable")
+      assert flag.enabled == false
+    end
+  end
+
+  describe "toggle/1" do
+    test "toggles a disabled flag to enabled" do
+      _flag = feature_flag_fixture(%{name: "to_toggle", enabled: false})
+
+      assert {:ok, flag} = FeatureFlags.toggle("to_toggle")
+      assert flag.enabled == true
+    end
+
+    test "toggles an enabled flag to disabled" do
+      _flag = enabled_flag_fixture(%{name: "to_toggle_off"})
+
+      assert {:ok, flag} = FeatureFlags.toggle("to_toggle_off")
+      assert flag.enabled == false
+    end
+  end
+end

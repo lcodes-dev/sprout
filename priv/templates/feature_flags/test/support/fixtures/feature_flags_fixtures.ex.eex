@@ -1,0 +1,49 @@
+defmodule <%= @app_module %>.FeatureFlagsFixtures do
+  @moduledoc """
+  Test helpers for creating feature flag entities.
+  """
+
+  alias <%= @app_module %>.FeatureFlags
+
+  @doc """
+  Creates a feature flag.
+  """
+  def feature_flag_fixture(attrs \\ %{}) do
+    {:ok, flag} =
+      attrs
+      |> Enum.into(%{
+        name: "test_flag_#{System.unique_integer([:positive])}",
+        description: "A test feature flag",
+        enabled: false,
+        rules: %{}
+      })
+      |> FeatureFlags.create_flag()
+
+    flag
+  end
+
+  @doc """
+  Creates an enabled feature flag.
+  """
+  def enabled_flag_fixture(attrs \\ %{}) do
+    feature_flag_fixture(Map.merge(%{enabled: true}, attrs))
+  end
+
+  @doc """
+  Creates a feature flag with percentage-based rollout.
+  """
+  def percentage_flag_fixture(percentage, attrs \\ %{}) do
+    feature_flag_fixture(
+      Map.merge(%{enabled: true, rules: %{"percentage" => percentage}}, attrs)
+    )
+  end
+
+  @doc """
+  Creates a feature flag with actor targeting.
+  """
+  def actor_targeted_flag_fixture(actor_ids, attrs \\ %{}) do
+    feature_flag_fixture(
+      Map.merge(%{enabled: true, rules: %{"actor_ids" => actor_ids}}, attrs)
+    )
+  end
+end
