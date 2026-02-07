@@ -1,0 +1,23 @@
+defmodule <%= @web_module %>.Plugs.FetchBanners do
+  @moduledoc """
+  Plug that fetches active announcement banners and assigns them to the connection.
+
+  Add this plug to your browser pipeline in the router:
+
+      pipeline :browser do
+        ...
+        plug <%= @web_module %>.Plugs.FetchBanners
+      end
+
+  The banners are then available in templates as `@announcement_banners`.
+  """
+
+  import Plug.Conn
+
+  def init(opts), do: opts
+
+  def call(conn, _opts) do
+    banners = <%= @app_module %>.Announcements.list_active_banners()
+    assign(conn, :announcement_banners, banners)
+  end
+end

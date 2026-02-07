@@ -35,6 +35,7 @@
     </script>
   </head>
   <body>
+    <.announcement_banners banners={assigns[:announcement_banners] || []} />
     <div id="flash-messages"></div>
     {@inner_content}
   </body>
