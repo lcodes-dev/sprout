@@ -1,0 +1,9 @@
+defmodule <%= @web_module %>.FeatureFlagHTML do
+  @moduledoc """
+  HTML views for feature flag admin pages.
+  """
+
+  use <%= @web_module %>, :html
+
+  embed_templates "html/*"
+end

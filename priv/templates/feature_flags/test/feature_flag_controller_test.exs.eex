@@ -1,0 +1,126 @@
+defmodule <%= @web_module %>.FeatureFlagControllerTest do
+  use <%= @web_module %>.ConnCase, async: false
+
+  import <%= @app_module %>.AccountsFixtures
+  import <%= @app_module %>.FeatureFlagsFixtures
+
+  alias <%= @app_module %>.FeatureFlags
+
+  setup do
+    user = user_fixture()
+    %{user: user}
+  end
+
+  describe "GET /admin/feature-flags" do
+    test "lists all feature flags", %{conn: conn, user: user} do
+      _flag = feature_flag_fixture(%{name: "test_flag", description: "A test flag"})
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> get(~p"/admin/feature-flags")
+
+      response = html_response(conn, 200)
+      assert response =~ "Feature Flags"
+      assert response =~ "test_flag"
+    end
+  end
+
+  describe "GET /admin/feature-flags/new" do
+    test "renders the new flag form", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> log_in_user(user)
+        |> get(~p"/admin/feature-flags/new")
+
+      response = html_response(conn, 200)
+      assert response =~ "New Feature Flag"
+    end
+  end
+
+  describe "POST /admin/feature-flags" do
+    test "creates a flag with valid params", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> log_in_user(user)
+        |> post(~p"/admin/feature-flags", %{
+          "feature_flag" => %{"name" => "new_flag", "description" => "New flag"}
+        })
+
+      assert redirected_to(conn) == ~p"/admin/feature-flags"
+      assert FeatureFlags.get_flag("new_flag")
+    end
+
+    test "renders errors for invalid params", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> log_in_user(user)
+        |> post(~p"/admin/feature-flags", %{
+          "feature_flag" => %{"name" => ""}
+        })
+
+      response = html_response(conn, 200)
+      assert response =~ "Oops"
+    end
+  end
+
+  describe "GET /admin/feature-flags/:id/edit" do
+    test "renders the edit form", %{conn: conn, user: user} do
+      flag = feature_flag_fixture(%{name: "editable"})
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> get(~p"/admin/feature-flags/#{flag}/edit")
+
+      response = html_response(conn, 200)
+      assert response =~ "Edit Feature Flag"
+    end
+  end
+
+  describe "PUT /admin/feature-flags/:id" do
+    test "updates a flag", %{conn: conn, user: user} do
+      flag = feature_flag_fixture(%{name: "to_update"})
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> put(~p"/admin/feature-flags/#{flag}", %{
+          "feature_flag" => %{"description" => "Updated desc"}
+        })
+
+      assert redirected_to(conn) == ~p"/admin/feature-flags"
+      updated = FeatureFlags.get_flag("to_update")
+      assert updated.description == "Updated desc"
+    end
+  end
+
+  describe "PUT /admin/feature-flags/:id/toggle" do
+    test "toggles a flag", %{conn: conn, user: user} do
+      flag = feature_flag_fixture(%{name: "to_toggle", enabled: false})
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> put(~p"/admin/feature-flags/#{flag}/toggle")
+
+      assert redirected_to(conn) == ~p"/admin/feature-flags"
+      toggled = FeatureFlags.get_flag("to_toggle")
+      assert toggled.enabled == true
+    end
+  end
+
+  describe "DELETE /admin/feature-flags/:id" do
+    test "deletes a flag", %{conn: conn, user: user} do
+      flag = feature_flag_fixture(%{name: "to_delete"})
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> delete(~p"/admin/feature-flags/#{flag}")
+
+      assert redirected_to(conn) == ~p"/admin/feature-flags"
+      assert FeatureFlags.get_flag("to_delete") == nil
+    end
+  end
+end
