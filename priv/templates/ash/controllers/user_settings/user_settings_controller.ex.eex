@@ -1,0 +1,112 @@
+defmodule <%= @web_module %>.UserSettingsController do
+  use <%= @web_module %>, :controller
+
+  alias <%= @app_module %>.Accounts.User
+  alias <%= @app_module %>.Accounts.UserNotifier
+  alias <%= @web_module %>.UserAuth
+
+  import <%= @web_module %>.UserAuth, only: [require_sudo_mode: 2]
+
+  plug :require_sudo_mode
+  plug :assign_changesets
+
+  def edit(conn, _params) do
+    render(conn, :edit, current_scope: conn.assigns[:current_scope])
+  end
+
+  def update(conn, %{"action" => "update_email"} = params) do
+    %{"user" => %{"email" => new_email}} = params
+    user = conn.assigns.current_scope.user
+
+    if new_email != to_string(user.email) do
+      # Generate a token for email change confirmation
+      token = Phoenix.Token.sign(<%= @web_module %>.Endpoint, "change:#{user.email}", new_email)
+      url = url(~p"/users/settings/confirm-email/#{token}")
+      UserNotifier.deliver_update_email_instructions(user, url)
+
+      conn
+      |> put_flash(:info, "A link to confirm your email change has been sent to the new address.")
+      |> redirect(to: ~p"/users/settings")
+    else
+      email_form = Phoenix.Component.to_form(%{"email" => to_string(user.email)}, as: "user",
+        errors: [email: {"did not change", []}])
+
+      conn
+      |> put_status(:unprocessable_entity)
+      |> render(:edit, email_changeset: email_form, current_scope: conn.assigns[:current_scope])
+    end
+  end
+
+  def update(conn, %{"action" => "update_password"} = params) do
+    %{"user" => user_params} = params
+    user = conn.assigns.current_scope.user
+
+    case Ash.update(user, :update_password, %{
+           current_password: user_params["current_password"],
+           password: user_params["password"],
+           password_confirmation: user_params["password_confirmation"]
+         }) do
+      {:ok, user} ->
+        # Re-sign in to get a fresh token
+        strategy = AshAuthentication.Info.strategy!(User, :password)
+
+        case AshAuthentication.Strategy.action(strategy, :sign_in, %{
+               "email" => to_string(user.email),
+               "password" => user_params["password"]
+             }) do
+          {:ok, user_with_token} ->
+            conn
+            |> put_flash(:info, "Password updated successfully.")
+            |> put_session(:user_return_to, ~p"/users/settings")
+            |> UserAuth.log_in_user(user_with_token)
+
+          _ ->
+            conn
+            |> put_flash(:info, "Password updated successfully. Please log in again.")
+            |> redirect(to: ~p"/users/log-in")
+        end
+
+      {:error, error} ->
+        password_form =
+          error
+          |> AshPhoenix.FormData.to_form(as: "user")
+          |> Map.put(:params, user_params)
+
+        conn
+        |> put_status(:unprocessable_entity)
+        |> render(:edit, password_changeset: password_form, current_scope: conn.assigns[:current_scope])
+    end
+  end
+
+  def confirm_email(conn, %{"token" => token}) do
+    user = conn.assigns.current_scope.user
+
+    case Phoenix.Token.verify(<%= @web_module %>.Endpoint, "change:#{user.email}", token, max_age: 3600) do
+      {:ok, new_email} ->
+        case Ash.update(user, :change_email, %{email: new_email}) do
+          {:ok, _user} ->
+            conn
+            |> put_flash(:info, "Email changed successfully.")
+            |> redirect(to: ~p"/users/settings")
+
+          {:error, _} ->
+            conn
+            |> put_flash(:error, "Email change failed.")
+            |> redirect(to: ~p"/users/settings")
+        end
+
+      {:error, _} ->
+        conn
+        |> put_flash(:error, "Email change link is invalid or it has expired.")
+        |> redirect(to: ~p"/users/settings")
+    end
+  end
+
+  defp assign_changesets(conn, _opts) do
+    user = conn.assigns.current_scope.user
+
+    conn
+    |> assign(:email_changeset, Phoenix.Component.to_form(%{"email" => to_string(user.email)}, as: "user"))
+    |> assign(:password_changeset, Phoenix.Component.to_form(%{"current_password" => "", "password" => "", "password_confirmation" => ""}, as: "user"))
+  end
+end

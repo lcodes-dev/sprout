@@ -1,0 +1,185 @@
+defmodule <%= @web_module %>.UserAuth do
+  @moduledoc """
+  Handles user authentication using AshAuthentication.
+
+  Provides session management, remember-me cookies, and
+  authentication plugs for the router pipeline.
+  """
+
+  use <%= @web_module %>, :verified_routes
+
+  import Plug.Conn
+  import Phoenix.Controller
+
+  alias <%= @app_module %>.Accounts.Scope
+
+  # Make the remember me cookie valid for 365 days
+  @remember_me_cookie "_<%= @app_name %>_user_remember_me"
+  @remember_me_options [
+    sign: true,
+    max_age: 365 * 24 * 60 * 60,
+    same_site: "Lax"
+  ]
+
+  @doc """
+  Logs the user in.
+
+  Stores the user token in session and optionally sets a remember-me cookie.
+  Redirects to the session's `:user_return_to` path or the signed-in path.
+  """
+  def log_in_user(conn, user, params \\ %{}) do
+    user_return_to = get_session(conn, :user_return_to)
+    token = user.__metadata__[:token]
+
+    conn
+    |> renew_session(user)
+    |> put_session(:user_token, token)
+    |> maybe_write_remember_me_cookie(token, params, get_session(conn, :user_remember_me))
+    |> redirect(to: user_return_to || signed_in_path(conn))
+  end
+
+  @doc """
+  Logs the user out.
+
+  Clears session data and removes the remember-me cookie.
+  """
+  def log_out_user(conn) do
+    if live_socket_id = get_session(conn, :live_socket_id) do
+      <%= @web_module %>.Endpoint.broadcast(live_socket_id, "disconnect", %{})
+    end
+
+    conn
+    |> renew_session(nil)
+    |> delete_resp_cookie(@remember_me_cookie)
+    |> redirect(to: ~p"/")
+  end
+
+  @doc """
+  Authenticates the user by looking into the session and remember me token.
+
+  Sets `current_scope` in conn assigns based on the authenticated user.
+  """
+  def fetch_current_scope_for_user(conn, _opts) do
+    with token when is_binary(token) <- ensure_user_token(conn),
+         {:ok, user, _claims} <- AshAuthentication.Jwt.verify(token, <%= @app_module %>.Accounts) do
+      conn
+      |> put_session(:user_token, token)
+      |> assign(:current_user, user)
+      |> assign(:current_scope, Scope.for_user(user))
+    else
+      _ ->
+        conn
+        |> assign(:current_user, nil)
+        |> assign(:current_scope, nil)
+    end
+  end
+
+  defp ensure_user_token(conn) do
+    if token = get_session(conn, :user_token) do
+      token
+    else
+      conn = fetch_cookies(conn, signed: [@remember_me_cookie])
+
+      if token = conn.cookies[@remember_me_cookie] do
+        token
+      else
+        nil
+      end
+    end
+  end
+
+  # Do not renew session if the user is already logged in
+  # to prevent CSRF errors or data being lost in tabs that are still open
+  defp renew_session(conn, user)
+       when is_map(conn.assigns[:current_scope]) and
+              is_map(conn.assigns.current_scope.user) and
+              conn.assigns.current_scope.user.id == user.id do
+    conn
+  end
+
+  defp renew_session(conn, _user) do
+    delete_csrf_token()
+
+    conn
+    |> configure_session(renew: true)
+    |> clear_session()
+  end
+
+  defp maybe_write_remember_me_cookie(conn, token, %{"remember_me" => "true"}, _),
+    do: write_remember_me_cookie(conn, token)
+
+  defp maybe_write_remember_me_cookie(conn, token, _params, true),
+    do: write_remember_me_cookie(conn, token)
+
+  defp maybe_write_remember_me_cookie(conn, _token, _params, _), do: conn
+
+  defp write_remember_me_cookie(conn, token) do
+    conn
+    |> put_session(:user_remember_me, true)
+    |> put_resp_cookie(@remember_me_cookie, token, @remember_me_options)
+  end
+
+  @doc """
+  Plug for routes that require the user to not be authenticated.
+  """
+  def redirect_if_user_is_authenticated(conn, _opts) do
+    if conn.assigns[:current_scope] do
+      conn
+      |> redirect(to: signed_in_path(conn))
+      |> halt()
+    else
+      conn
+    end
+  end
+
+  defp signed_in_path(_conn), do: ~p"/dashboard"
+
+  @doc """
+  Plug for routes that require the user to be authenticated.
+  """
+  def require_authenticated_user(conn, _opts) do
+    if conn.assigns[:current_scope] && conn.assigns.current_scope.user do
+      conn
+    else
+      conn
+      |> put_flash(:error, "You must log in to access this page.")
+      |> maybe_store_return_to()
+      |> redirect(to: ~p"/users/log-in")
+      |> halt()
+    end
+  end
+
+  @doc """
+  Plug for routes that require sudo mode (recent authentication).
+  """
+  def require_sudo_mode(conn, _opts) do
+    # With AshAuthentication JWT tokens, check token issued_at
+    token = get_session(conn, :user_token)
+
+    sudo_valid? =
+      case token && AshAuthentication.Jwt.peek(token) do
+        {:ok, %{"iat" => iat}} ->
+          issued_at = DateTime.from_unix!(iat)
+          DateTime.diff(DateTime.utc_now(), issued_at, :minute) <= 10
+
+        _ ->
+          false
+      end
+
+    if sudo_valid? do
+      conn
+    else
+      conn
+      |> put_flash(:error, "You must re-authenticate to access this page.")
+      |> maybe_store_return_to()
+      |> redirect(to: ~p"/users/log-in")
+      |> halt()
+    end
+  end
+
+  defp maybe_store_return_to(%{method: "GET"} = conn) do
+    put_session(conn, :user_return_to, current_path(conn))
+  end
+
+  defp maybe_store_return_to(conn), do: conn
+end

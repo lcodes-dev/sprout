@@ -1,0 +1,31 @@
+defmodule <%= @web_module %>.UserRegistrationController do
+  use <%= @web_module %>, :controller
+
+  alias <%= @app_module %>.Accounts.User
+
+  def new(conn, _params) do
+    form = Phoenix.Component.to_form(%{"email" => "", "password" => "", "password_confirmation" => ""}, as: "user")
+    render(conn, :new, form: form, current_scope: conn.assigns[:current_scope])
+  end
+
+  def create(conn, %{"user" => user_params}) do
+    strategy = AshAuthentication.Info.strategy!(User, :password)
+
+    case AshAuthentication.Strategy.action(strategy, :register, user_params) do
+      {:ok, _user} ->
+        conn
+        |> put_flash(:info, "Account created! Please check your email to confirm your account.")
+        |> redirect(to: ~p"/users/log-in")
+
+      {:error, error} ->
+        form =
+          error
+          |> AshPhoenix.FormData.to_form(as: "user")
+          |> Map.put(:params, user_params)
+
+        conn
+        |> put_status(:unprocessable_entity)
+        |> render(:new, form: form, current_scope: conn.assigns[:current_scope])
+    end
+  end
+end

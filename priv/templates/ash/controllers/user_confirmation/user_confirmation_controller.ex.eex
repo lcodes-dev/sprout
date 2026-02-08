@@ -1,0 +1,21 @@
+defmodule <%= @web_module %>.UserConfirmationController do
+  use <%= @web_module %>, :controller
+
+  alias <%= @app_module %>.Accounts.User
+
+  def confirm(conn, %{"token" => token}) do
+    add_on = AshAuthentication.Info.add_on!(User, :confirm_new_user)
+
+    case AshAuthentication.AddOn.Confirmation.confirm(add_on, %{"confirm" => token}) do
+      {:ok, _} ->
+        conn
+        |> put_flash(:info, "Email confirmed successfully. You can now sign in.")
+        |> redirect(to: ~p"/users/log-in")
+
+      {:error, _reason} ->
+        conn
+        |> put_flash(:error, "Confirmation link is invalid or it has expired.")
+        |> redirect(to: ~p"/users/log-in")
+    end
+  end
+end

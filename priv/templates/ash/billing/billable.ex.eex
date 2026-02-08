@@ -1,0 +1,34 @@
+defmodule <%= @app_module %>.Billing.Billable do
+  @moduledoc """
+  Behaviour for billable entities.
+
+  Any entity that can have subscriptions, purchases, or credits
+  must implement this behaviour.
+  """
+
+  @doc "Returns the billable type string (e.g., \"user\")"
+  @callback billable_type() :: String.t()
+
+  @doc "Returns the billable ID for the entity"
+  @callback billable_id(entity :: struct()) :: any()
+
+  @doc "Returns the email for the billable entity"
+  @callback billable_email(entity :: struct()) :: String.t()
+
+  @doc "Returns the display name (optional)"
+  @callback billable_name(entity :: struct()) :: String.t() | nil
+  @optional_callbacks [billable_name: 1]
+
+  @doc """
+  Returns the module for a given billable type string.
+  """
+  def module_for_type(type) do
+    config = Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing, [])
+    billable_types = Keyword.get(config, :billable_types, [])
+
+    case Enum.find(billable_types, fn {t, _mod} -> to_string(t) == type end) do
+      {_type, module} -> module
+      nil -> nil
+    end
+  end
+end

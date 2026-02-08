@@ -1,0 +1,101 @@
+defmodule <%= @app_module %>.Billing.Product do
+  @moduledoc """
+  Represents a product that can be purchased or subscribed to.
+
+  Products can be:
+  - "subscription" - recurring subscriptions
+  - "one_time" - one-time purchases (courses, books, etc.)
+  - "credits" - credit/token packages
+  """
+
+  use Ash.Resource,
+    domain: <%= @app_module %>.Billing,
+    data_layer: AshPostgres.DataLayer
+
+  postgres do
+    table "products"
+    repo <%= @app_module %>.Repo
+  end
+
+  attributes do
+    integer_primary_key :id
+
+    attribute :paddle_product_id, :string, public?: true
+    attribute :paddle_price_id, :string, public?: true
+    attribute :name, :string, allow_nil?: false, public?: true
+    attribute :slug, :string, allow_nil?: false, public?: true
+
+    attribute :type, :string do
+      allow_nil? false
+      public? true
+      constraints one_of: ["subscription", "one_time", "credits"]
+    end
+
+    attribute :metadata, :map, default: %{}, public?: true
+    attribute :active, :boolean, default: true, public?: true
+
+    create_timestamp :inserted_at
+    update_timestamp :updated_at
+  end
+
+  actions do
+    defaults [:read]
+
+    create :create do
+      accept [:paddle_product_id, :paddle_price_id, :name, :slug, :type, :metadata, :active]
+    end
+
+    update :update do
+      accept [:paddle_product_id, :paddle_price_id, :name, :slug, :type, :metadata, :active]
+    end
+
+    read :get_by_slug do
+      argument :slug, :string, allow_nil?: false
+      get? true
+      filter expr(slug == ^arg(:slug))
+    end
+
+    read :get_by_paddle_product_id do
+      argument :paddle_product_id, :string, allow_nil?: false
+      get? true
+      filter expr(paddle_product_id == ^arg(:paddle_product_id))
+    end
+
+    read :get_by_paddle_price_id do
+      argument :paddle_price_id, :string, allow_nil?: false
+      get? true
+      filter expr(paddle_price_id == ^arg(:paddle_price_id))
+    end
+
+    read :list_active do
+      filter expr(active == true)
+      prepare build(sort: [name: :asc])
+    end
+
+    read :list_by_type do
+      argument :type, :string, allow_nil?: false
+      filter expr(type == ^arg(:type) and active == true)
+      prepare build(sort: [name: :asc])
+    end
+  end
+
+  identities do
+    identity :unique_slug, [:slug]
+  end
+
+  @doc """
+  Returns the credits amount for a credit-type product.
+  """
+  def credits_amount(%__MODULE__{type: "credits", metadata: metadata}) do
+    Map.get(metadata, "credits_amount", 0)
+  end
+
+  def credits_amount(_), do: 0
+
+  @doc """
+  Returns the features list for a product.
+  """
+  def features(%__MODULE__{metadata: metadata}) do
+    Map.get(metadata, "features", [])
+  end
+end

@@ -1,0 +1,14 @@
+defmodule <%= @app_module %>.Accounts do
+  @moduledoc """
+  The Accounts domain - manages user authentication and authorization.
+
+  Uses Ash Framework with AshAuthentication for declarative auth.
+  """
+
+  use Ash.Domain
+
+  resources do
+    resource <%= @app_module %>.Accounts.User
+    resource <%= @app_module %>.Accounts.Token
+  end
+end

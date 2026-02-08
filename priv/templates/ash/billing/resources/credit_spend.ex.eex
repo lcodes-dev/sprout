@@ -1,0 +1,46 @@
+defmodule <%= @app_module %>.Billing.CreditSpend do
+  @moduledoc """
+  Logs credit spending for audit purposes.
+
+  Each spend record tracks how many credits were spent,
+  what they were spent on, and when they were spent.
+  """
+
+  use Ash.Resource,
+    domain: <%= @app_module %>.Billing,
+    data_layer: AshPostgres.DataLayer
+
+  postgres do
+    table "credit_spends"
+    repo <%= @app_module %>.Repo
+  end
+
+  attributes do
+    integer_primary_key :id
+
+    attribute :amount, :integer, allow_nil?: false, public?: true
+    attribute :description, :string, public?: true
+    attribute :reference_type, :string, public?: true
+    attribute :reference_id, :integer, public?: true
+
+    create_timestamp :inserted_at
+  end
+
+  relationships do
+    belongs_to :billable_customer, <%= @app_module %>.Billing.BillableCustomer, allow_nil?: false
+  end
+
+  actions do
+    defaults [:read]
+
+    create :create do
+      accept [:billable_customer_id, :amount, :description, :reference_type, :reference_id]
+    end
+
+    read :for_customer do
+      argument :billable_customer_id, :integer, allow_nil?: false
+      filter expr(billable_customer_id == ^arg(:billable_customer_id))
+      prepare build(sort: [inserted_at: :desc])
+    end
+  end
+end

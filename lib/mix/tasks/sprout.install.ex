@@ -13,6 +13,7 @@ defmodule Mix.Tasks.Sprout.Install do
   - `--examples` - Include example Turbo controller demonstrating all features
   - `--no-auth` - Skip user authentication (auth is included by default)
   - `--no-payments` - Skip Paddle Billing integration (payments is included by default)
+  - `--ash` - Use Ash Framework instead of Ecto schemas and Phoenix contexts
 
   ## What Gets Installed
 
@@ -38,6 +39,12 @@ defmodule Mix.Tasks.Sprout.Install do
   - One-time purchases with gated access
   - Credit/token system
 
+  With `--ash`:
+  - Ash resources instead of Ecto schemas
+  - Ash domains instead of Phoenix contexts
+  - AshAuthentication for auth (replaces hand-rolled auth)
+  - AshPostgres for the data layer
+
   After installation, run:
 
   ```bash
@@ -56,16 +63,19 @@ defmodule Mix.Tasks.Sprout.Install do
       schema: [
         examples: :boolean,
         auth: :boolean,
-        payments: :boolean
+        payments: :boolean,
+        ash: :boolean
       ],
       defaults: [
         examples: false,
         auth: true,
-        payments: true
+        payments: true,
+        ash: false
       ],
       aliases: [
         e: :examples,
-        p: :payments
+        p: :payments,
+        a: :ash
       ],
       adds_deps: [
         {:bcrypt_elixir, "~> 3.0"}
@@ -79,6 +89,7 @@ defmodule Mix.Tasks.Sprout.Install do
     include_examples? = Keyword.get(options, :examples, false)
     include_auth? = Keyword.get(options, :auth, true)
     include_payments? = Keyword.get(options, :payments, true)
+    use_ash? = Keyword.get(options, :ash, false)
 
     # Get app name from Mix project config (most reliable source)
     app_name = Mix.Project.config()[:app] |> to_string()
@@ -102,6 +113,7 @@ defmodule Mix.Tasks.Sprout.Install do
     ===================
 
     Installing Hotwire Turbo, Alpine.js, and BasecoatUI...
+    #{if use_ash?, do: "Using Ash Framework...", else: ""}
     #{if include_auth?, do: "Including user authentication...", else: ""}
     #{if include_payments?, do: "Including Paddle payments integration...", else: ""}
     """)
@@ -135,10 +147,12 @@ defmodule Mix.Tasks.Sprout.Install do
     |> remove_daisyui_files()
     # Optional: Add example controller
     |> maybe_add_examples(include_examples?, assigns)
-    # Optional: Add authentication
-    |> maybe_add_auth(include_auth?, assigns)
-    # Optional: Add payments (requires auth)
-    |> maybe_add_payments(include_payments? and include_auth?, assigns)
+    # Authentication: Ash or Ecto
+    |> maybe_add_auth(include_auth? and not use_ash?, assigns)
+    |> maybe_add_ash_auth(include_auth? and use_ash?, assigns)
+    # Payments: Ash or Ecto (requires auth)
+    |> maybe_add_payments(include_payments? and include_auth? and not use_ash?, assigns)
+    |> maybe_add_ash_payments(include_payments? and include_auth? and use_ash?, assigns)
     |> add_final_notice(include_examples?, include_auth?, include_payments?)
   end
 
@@ -1331,5 +1345,339 @@ defmodule Mix.Tasks.Sprout.Install do
         {:code, Sourceror.parse_string!("#{repo_module}")})
     # test.exs - Oban testing mode
     |> Igniter.Project.Config.configure("test.exs", app_name, [Oban, :testing], :manual)
+  end
+
+  # ============================================================================
+  # Ash Framework Authentication (--ash)
+  # ============================================================================
+
+  defp maybe_add_ash_auth(igniter, false, _assigns), do: igniter
+
+  defp maybe_add_ash_auth(igniter, true, assigns) do
+    igniter
+    |> add_ash_dependencies()
+    |> create_ash_accounts_domain(assigns)
+    |> create_ash_user_resource(assigns)
+    |> create_ash_token_resource(assigns)
+    |> create_ash_scope_module(assigns)
+    |> create_ash_email_validation(assigns)
+    |> create_ash_senders(assigns)
+    |> create_ash_user_notifier(assigns)
+    |> create_mailer(assigns)
+    |> create_email_components(assigns)
+    |> create_ash_user_auth(assigns)
+    |> create_ash_auth_controllers(assigns)
+    |> create_ash_dashboard_controller(assigns)
+    |> create_ash_auth_migration(assigns)
+    |> create_ash_auth_tests(assigns)
+    |> update_router_for_auth(assigns)
+    |> add_ash_auth_config(assigns)
+    |> copy_small_logo()
+  end
+
+  defp add_ash_dependencies(igniter) do
+    igniter
+    |> Igniter.Project.Deps.add_dep({:ash, "~> 3.0"})
+    |> Igniter.Project.Deps.add_dep({:ash_postgres, "~> 2.0"})
+    |> Igniter.Project.Deps.add_dep({:ash_authentication, "~> 4.0"})
+    |> Igniter.Project.Deps.add_dep({:ash_authentication_phoenix, "~> 2.0"})
+    |> Igniter.Project.Deps.add_dep({:ash_phoenix, "~> 2.0"})
+    |> Igniter.Project.Deps.add_dep({:bcrypt_elixir, "~> 3.0"})
+  end
+
+  defp create_ash_accounts_domain(igniter, assigns) do
+    path = "#{assigns[:app_path]}/accounts.ex"
+    content = render_template("ash/accounts/accounts.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_ash_user_resource(igniter, assigns) do
+    path = "#{assigns[:app_path]}/accounts/user.ex"
+    content = render_template("ash/accounts/resources/user.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_ash_token_resource(igniter, assigns) do
+    path = "#{assigns[:app_path]}/accounts/token.ex"
+    content = render_template("ash/accounts/resources/token.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_ash_scope_module(igniter, assigns) do
+    path = "#{assigns[:app_path]}/accounts/scope.ex"
+    content = render_template("ash/accounts/schemas/scope.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_ash_email_validation(igniter, assigns) do
+    path = "#{assigns[:app_path]}/accounts/validations/validate_email.ex"
+    content = render_template("ash/accounts/validations/validate_email.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_ash_senders(igniter, assigns) do
+    app_path = assigns[:app_path]
+
+    reset_content = render_template("ash/accounts/senders/send_password_reset_email.ex.eex", assigns)
+    confirm_content = render_template("ash/accounts/senders/send_confirmation_email.ex.eex", assigns)
+
+    igniter
+    |> Igniter.create_new_file("#{app_path}/accounts/senders/send_password_reset_email.ex", reset_content, on_exists: :skip)
+    |> Igniter.create_new_file("#{app_path}/accounts/senders/send_confirmation_email.ex", confirm_content, on_exists: :skip)
+  end
+
+  defp create_ash_user_notifier(igniter, assigns) do
+    path = "#{assigns[:app_path]}/accounts/user_notifier.ex"
+    content = render_template("ash/accounts/user_notifier.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_ash_user_auth(igniter, assigns) do
+    path = "#{assigns[:web_path]}/user_auth.ex"
+    content = render_template("ash/user_auth.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_ash_auth_controllers(igniter, assigns) do
+    web_path = assigns[:web_path]
+
+    # Controllers with their own templates
+    controllers = [
+      {"user_registration", ["new.html.heex", "registration_form.html.heex"]},
+      {"user_session", ["new.html.heex", "session_form.html.heex"]},
+      {"user_forgot_password", ["new.html.heex", "forgot_password_form.html.heex"]},
+      {"user_reset_password", ["edit.html.heex", "reset_password_form.html.heex"]},
+      {"user_confirmation", []},
+      {"user_settings", ["edit.html.heex", "email_form.html.heex", "password_form.html.heex"]}
+    ]
+
+    Enum.reduce(controllers, igniter, fn {controller_name, templates}, acc ->
+      # Ash controllers come from the ash/ template directory
+      controller_path = "#{web_path}/controllers/#{controller_name}/#{controller_name}_controller.ex"
+      controller_content = render_template("ash/controllers/#{controller_name}/#{controller_name}_controller.ex.eex", assigns)
+
+      acc = Igniter.create_new_file(acc, controller_path, controller_content, on_exists: :skip)
+
+      # HTML modules from ash/ directory
+      acc = if templates != [] do
+        html_path = "#{web_path}/controllers/#{controller_name}/#{controller_name}_html.ex"
+        html_content = render_template("ash/controllers/#{controller_name}/#{controller_name}_html.ex.eex", assigns)
+        Igniter.create_new_file(acc, html_path, html_content, on_exists: :skip)
+      else
+        acc
+      end
+
+      # Templates (.heex) are shared with the Ecto version
+      Enum.reduce(templates, acc, fn template, inner_acc ->
+        dest_path = "#{web_path}/controllers/#{controller_name}/html/#{template}"
+        source = template_path("auth/controllers/#{controller_name}/html/#{template}")
+
+        if File.exists?(source) do
+          content = File.read!(source)
+          Igniter.create_new_file(inner_acc, dest_path, content, on_exists: :skip)
+        else
+          inner_acc
+        end
+      end)
+    end)
+  end
+
+  defp create_ash_dashboard_controller(igniter, assigns) do
+    web_path = assigns[:web_path]
+
+    controller_content = render_template("ash/controllers/dashboard/dashboard_controller.ex.eex", assigns)
+    html_content = render_template("ash/controllers/dashboard/dashboard_html.ex.eex", assigns)
+    # Dashboard template is shared with the Ecto version
+    template_content = File.read!(template_path("auth/controllers/dashboard/html/index.html.heex"))
+
+    igniter
+    |> Igniter.create_new_file("#{web_path}/controllers/dashboard/dashboard_controller.ex", controller_content, on_exists: :skip)
+    |> Igniter.create_new_file("#{web_path}/controllers/dashboard/dashboard_html.ex", html_content, on_exists: :skip)
+    |> Igniter.create_new_file("#{web_path}/controllers/dashboard/html/index.html.heex", template_content, on_exists: :skip)
+  end
+
+  defp create_ash_auth_migration(igniter, assigns) do
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
+    path = "priv/repo/migrations/#{timestamp}_create_users_auth_tables.exs"
+    content = render_template("ash/migrations/create_users_auth_tables.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_ash_auth_tests(igniter, assigns) do
+    app_name = assigns[:app_name]
+
+    fixtures_content = render_template("ash/test/support/fixtures/accounts_fixtures.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "test/support/accounts_fixtures.ex", fixtures_content, on_exists: :skip)
+
+    accounts_test_content = render_template("ash/test/accounts_test.exs.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "test/#{app_name}/accounts_test.exs", accounts_test_content, on_exists: :skip)
+
+    user_auth_test_content = render_template("ash/test/user_auth_test.exs.eex", assigns)
+    Igniter.create_new_file(igniter, "test/#{app_name}_web/user_auth_test.exs", user_auth_test_content, on_exists: :skip)
+  end
+
+  defp add_ash_auth_config(igniter, assigns) do
+    app_name = String.to_atom(assigns[:app_name])
+    app_module = Module.concat([assigns[:app_module]])
+    accounts_domain = Module.concat([app_module, "Accounts"])
+
+    igniter
+    # Token signing secret
+    |> Igniter.Project.Config.configure("config.exs", app_name, [:token_signing_secret],
+        "please-change-me-to-a-random-secret-in-production")
+    |> Igniter.Project.Config.configure("runtime.exs", app_name, [:token_signing_secret],
+        {:code, Sourceror.parse_string!(~s(System.get_env("TOKEN_SIGNING_SECRET") || "please-change-me-to-a-random-secret-in-production"))})
+    # Ash domains config
+    |> Igniter.Project.Config.configure("config.exs", :ash, [:known_types],
+        [{:code, Sourceror.parse_string!("AshAuthentication.TokenResource")}])
+    |> Igniter.Project.Config.configure("config.exs", app_name, [:ash_domains],
+        [{:code, Sourceror.parse_string!("#{accounts_domain}")}])
+  end
+
+  # ============================================================================
+  # Ash Framework Payments (--ash --payments)
+  # ============================================================================
+
+  defp maybe_add_ash_payments(igniter, false, _assigns), do: igniter
+
+  defp maybe_add_ash_payments(igniter, true, assigns) do
+    igniter
+    |> add_req_dependency()
+    |> add_oban_dependency()
+    |> create_ash_billing_domain(assigns)
+    |> create_ash_billing_resources(assigns)
+    |> create_ash_billing_modules(assigns)
+    |> create_ash_paddle_modules(assigns)
+    |> create_ash_billing_worker(assigns)
+    |> create_billing_controllers(assigns)
+    |> create_billing_plugs(assigns)
+    |> create_ash_billing_migration(assigns)
+    |> create_oban_migration(assigns)
+    |> update_ash_user_for_billing(assigns)
+    |> update_router_for_payments(assigns)
+    |> update_application_for_oban(assigns)
+    |> update_endpoint_for_billing(assigns)
+    |> add_ash_payments_config(assigns)
+    |> add_oban_config(assigns)
+  end
+
+  defp create_ash_billing_domain(igniter, assigns) do
+    path = "#{assigns[:app_path]}/billing.ex"
+    content = render_template("ash/billing/billing.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_ash_billing_resources(igniter, assigns) do
+    app_path = assigns[:app_path]
+
+    resources = [
+      {"billable_customer", "ash/billing/resources/billable_customer.ex.eex"},
+      {"product", "ash/billing/resources/product.ex.eex"},
+      {"subscription", "ash/billing/resources/subscription.ex.eex"},
+      {"purchase", "ash/billing/resources/purchase.ex.eex"},
+      {"credit_spend", "ash/billing/resources/credit_spend.ex.eex"}
+    ]
+
+    Enum.reduce(resources, igniter, fn {name, template}, acc ->
+      path = "#{app_path}/billing/#{name}.ex"
+      content = render_template(template, assigns)
+      Igniter.create_new_file(acc, path, content, on_exists: :skip)
+    end)
+  end
+
+  defp create_ash_billing_modules(igniter, assigns) do
+    app_path = assigns[:app_path]
+
+    modules = [
+      {"customers", "ash/billing/customers.ex.eex"},
+      {"subscriptions", "ash/billing/subscriptions.ex.eex"},
+      {"purchases", "ash/billing/purchases.ex.eex"},
+      {"credits", "ash/billing/credits.ex.eex"},
+      {"billable", "ash/billing/billable.ex.eex"}
+    ]
+
+    Enum.reduce(modules, igniter, fn {name, template}, acc ->
+      path = "#{app_path}/billing/#{name}.ex"
+      content = render_template(template, assigns)
+      Igniter.create_new_file(acc, path, content, on_exists: :skip)
+    end)
+  end
+
+  defp create_ash_paddle_modules(igniter, assigns) do
+    app_path = assigns[:app_path]
+
+    # Client and Signature are framework-agnostic, reuse from Ecto templates
+    client_content = render_template("billing/paddle/client.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing/paddle/client.ex", client_content, on_exists: :skip)
+
+    signature_content = render_template("billing/paddle/signature.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing/paddle/signature.ex", signature_content, on_exists: :skip)
+
+    # Webhook handler uses Ash resources
+    webhook_content = render_template("ash/billing/paddle/webhook_handler.ex.eex", assigns)
+    Igniter.create_new_file(igniter, "#{app_path}/billing/paddle/webhook_handler.ex", webhook_content, on_exists: :skip)
+  end
+
+  defp create_ash_billing_worker(igniter, assigns) do
+    path = "#{assigns[:app_path]}/billing/workers/sync_products.ex"
+    content = render_template("ash/billing/workers/sync_products.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_ash_billing_migration(igniter, assigns) do
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
+    timestamp = String.to_integer(timestamp) + 1 |> to_string()
+
+    path = "priv/repo/migrations/#{timestamp}_create_billing_tables.exs"
+    content = render_template("ash/billing/migrations/create_billing_tables.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp update_ash_user_for_billing(igniter, assigns) do
+    app_path = assigns[:app_path]
+
+    path = "#{app_path}/accounts/user.ex"
+    content = render_template("ash/billing/accounts/resources/user_with_billing.ex.eex", assigns)
+
+    igniter
+    |> Igniter.include_or_create_file(path, content)
+    |> Igniter.update_elixir_file(path, fn _zipper ->
+      {:ok, Igniter.Code.Common.parse_to_zipper!(content)}
+    end)
+  end
+
+  defp add_ash_payments_config(igniter, assigns) do
+    app_name = String.to_atom(assigns[:app_name])
+    app_module = Module.concat([assigns[:app_module]])
+    billing_module = Module.concat([app_module, "Billing"])
+    billing_domain = Module.concat([app_module, "Billing"])
+    user_module = Module.concat([app_module, "Accounts", "User"])
+
+    igniter
+    # Add billing domain to Ash config
+    |> Igniter.Project.Config.configure("config.exs", app_name, [:ash_domains],
+        [{:code, Sourceror.parse_string!("#{billing_domain}")}],
+        updater: fn zipper ->
+          node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+          if String.contains?(node_string, "Billing") do
+            {:ok, zipper}
+          else
+            {:ok, Igniter.Code.Common.parse_to_zipper!(
+              String.replace(node_string, ~r/(\[.*)(])$/s, "\\1, #{billing_domain}\\2")
+            )}
+          end
+        end)
+    # Paddle config
+    |> Igniter.Project.Config.configure("config.exs", app_name, [billing_module, :paddle, :environment], :sandbox)
+    |> Igniter.Project.Config.configure("config.exs", app_name, [billing_module, :allow_multiple_subscriptions], false)
+    |> Igniter.Project.Config.configure("runtime.exs", app_name, [billing_module, :paddle, :api_key],
+        {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_API_KEY\")")})
+    |> Igniter.Project.Config.configure("runtime.exs", app_name, [billing_module, :paddle, :webhook_secret],
+        {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_WEBHOOK_SECRET\")")})
+    |> Igniter.Project.Config.configure("runtime.exs", app_name, [billing_module, :paddle, :client_token],
+        {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_CLIENT_TOKEN\")")})
+    |> Igniter.Project.Config.configure("prod.exs", app_name, [billing_module, :paddle, :environment], :production)
+    |> Igniter.Project.Config.configure("config.exs", app_name, [billing_module, :billable_types],
+        [{:user, user_module}])
   end
 end

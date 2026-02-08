@@ -1,0 +1,143 @@
+defmodule <%= @app_module %>.Billing.Workers.SyncProducts do
+  @moduledoc """
+  Oban worker to sync products and prices from Paddle using Ash resources.
+  """
+
+  use Oban.Worker, queue: :default, max_attempts: 3
+
+  require Logger
+
+  alias <%= @app_module %>.Billing.Paddle.Client
+  alias <%= @app_module %>.Billing.Product
+
+  @impl Oban.Worker
+  def perform(_job) do
+    Logger.info("Starting Paddle product sync")
+
+    with {:ok, products} <- fetch_products(),
+         {:ok, prices} <- fetch_prices() do
+      sync_products(products, prices)
+      Logger.info("Paddle product sync completed successfully")
+      :ok
+    else
+      {:error, reason} ->
+        Logger.error("Paddle product sync failed: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp fetch_products do
+    case Client.list_products(status: "active") do
+      {:ok, products} when is_list(products) -> {:ok, products}
+      {:ok, _other} -> {:ok, []}
+      error -> error
+    end
+  end
+
+  defp fetch_prices do
+    case Client.list_prices(status: "active") do
+      {:ok, prices} when is_list(prices) -> {:ok, prices}
+      {:ok, _other} -> {:ok, []}
+      error -> error
+    end
+  end
+
+  defp sync_products(paddle_products, paddle_prices) do
+    prices_by_product = Enum.group_by(paddle_prices, & &1["product_id"])
+
+    Enum.each(paddle_products, fn paddle_product ->
+      product_prices = Map.get(prices_by_product, paddle_product["id"], [])
+      sync_product(paddle_product, product_prices)
+    end)
+  end
+
+  defp sync_product(paddle_product, paddle_prices) do
+    paddle_product_id = paddle_product["id"]
+    name = paddle_product["name"]
+    slug = generate_slug(name, paddle_product_id)
+    product_type = determine_product_type(paddle_product)
+    primary_price = List.first(paddle_prices)
+
+    attrs = %{
+      paddle_product_id: paddle_product_id,
+      paddle_price_id: primary_price && primary_price["id"],
+      name: name,
+      slug: slug,
+      type: product_type,
+      active: paddle_product["status"] == "active",
+      metadata: build_metadata(paddle_product, paddle_prices)
+    }
+
+    case Ash.get(Product, :get_by_paddle_product_id, %{paddle_product_id: paddle_product_id}) do
+      {:ok, existing} ->
+        existing
+        |> Ash.Changeset.for_update(:update, attrs)
+        |> Ash.update()
+        |> log_result("Updated", name)
+
+      _ ->
+        Product
+        |> Ash.Changeset.for_create(:create, attrs)
+        |> Ash.create()
+        |> log_result("Created", name)
+    end
+  end
+
+  defp generate_slug(name, paddle_product_id) do
+    base_slug =
+      name
+      |> String.downcase()
+      |> String.replace(~r/[^a-z0-9]+/, "-")
+      |> String.trim("-")
+
+    case Ash.get(Product, :get_by_slug, %{slug: base_slug}) do
+      {:ok, existing} ->
+        if existing.paddle_product_id == paddle_product_id do
+          base_slug
+        else
+          "#{base_slug}-#{String.slice(paddle_product_id, -6, 6)}"
+        end
+
+      _ ->
+        base_slug
+    end
+  end
+
+  defp determine_product_type(paddle_product) do
+    custom_data = paddle_product["custom_data"] || %{}
+
+    cond do
+      custom_data["type"] -> custom_data["type"]
+      custom_data["credits_amount"] -> "credits"
+      true -> "subscription"
+    end
+  end
+
+  defp build_metadata(paddle_product, paddle_prices) do
+    custom_data = paddle_product["custom_data"] || %{}
+    description = paddle_product["description"]
+
+    prices_info =
+      Enum.map(paddle_prices, fn price ->
+        %{
+          "id" => price["id"],
+          "unit_price" => get_in(price, ["unit_price", "amount"]),
+          "currency" => get_in(price, ["unit_price", "currency_code"]),
+          "billing_cycle" => get_in(price, ["billing_cycle", "interval"]),
+          "billing_frequency" => get_in(price, ["billing_cycle", "frequency"])
+        }
+      end)
+
+    %{
+      "description" => description,
+      "features" => Map.get(custom_data, "features", []),
+      "credits_amount" => Map.get(custom_data, "credits_amount"),
+      "prices" => prices_info
+    }
+    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+    |> Map.new()
+  end
+
+  defp log_result({:ok, _}, action, name), do: Logger.info("#{action} product: #{name}")
+  defp log_result({:error, error}, action, name), do: Logger.error("Failed to #{String.downcase(action)} product #{name}: #{inspect(error)}")
+end

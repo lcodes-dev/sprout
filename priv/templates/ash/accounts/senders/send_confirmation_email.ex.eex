@@ -1,0 +1,19 @@
+defmodule <%= @app_module %>.Accounts.Senders.SendConfirmationEmail do
+  @moduledoc """
+  Sends email confirmation instructions.
+
+  Implements the AshAuthentication.Sender behaviour for the
+  email confirmation flow.
+  """
+
+  use AshAuthentication.Sender
+
+  alias <%= @app_module %>.Accounts.UserNotifier
+
+  @impl true
+  def send(user, token, _opts) do
+    url = <%= @web_module %>.Endpoint.url() <> "/users/confirm/" <> token
+    UserNotifier.deliver_confirmation_instructions(user, url)
+    :ok
+  end
+end

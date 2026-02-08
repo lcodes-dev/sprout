@@ -1,0 +1,177 @@
+defmodule <%= @app_module %>.Accounts.User do
+  @moduledoc """
+  User resource with password authentication and billing support.
+
+  Uses AshAuthentication for auth and implements the Billable behaviour
+  for integration with the billing system.
+  """
+
+  use Ash.Resource,
+    domain: <%= @app_module %>.Accounts,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshAuthentication],
+    authorizers: [Ash.Policy.Authorizer]
+
+  @behaviour <%= @app_module %>.Billing.Billable
+
+  authentication do
+    tokens do
+      enabled? true
+      token_resource <%= @app_module %>.Accounts.Token
+
+      signing_secret fn _, _ ->
+        Application.fetch_env(:<%= @app_name %>, :token_signing_secret)
+      end
+
+      store_all_tokens? true
+      token_lifetime {21, :days}
+    end
+
+    strategies do
+      password :password do
+        identity_field :email
+        hashed_password_field :hashed_password
+        sign_in_tokens_enabled? true
+
+        resettable do
+          sender <%= @app_module %>.Accounts.Senders.SendPasswordResetEmail
+        end
+      end
+    end
+
+    add_ons do
+      confirmation :confirm_new_user do
+        monitor_fields [:email]
+        confirm_on_create? true
+        confirm_on_update? true
+        confirm_action_name :confirm
+        sender <%= @app_module %>.Accounts.Senders.SendConfirmationEmail
+      end
+    end
+  end
+
+  postgres do
+    table "users"
+    repo <%= @app_module %>.Repo
+  end
+
+  policies do
+    bypass AshAuthentication.Checks.AshAuthenticationInteraction do
+      authorize_if always()
+    end
+
+    policy always() do
+      forbid_if always()
+    end
+  end
+
+  attributes do
+    uuid_primary_key :id
+
+    attribute :email, :ci_string do
+      allow_nil? false
+      public? true
+    end
+
+    attribute :hashed_password, :string do
+      allow_nil? false
+      sensitive? true
+    end
+
+    attribute :confirmed_at, :utc_datetime_usec do
+      allow_nil? true
+    end
+
+    create_timestamp :inserted_at
+    update_timestamp :updated_at
+  end
+
+  actions do
+    defaults [:read]
+
+    read :get_by_email do
+      argument :email, :ci_string, allow_nil?: false
+      get? true
+      filter expr(email == ^arg(:email))
+    end
+
+    read :get_by_id do
+      argument :id, :uuid, allow_nil?: false
+      get? true
+      filter expr(id == ^arg(:id))
+    end
+
+    update :change_email do
+      accept [:email]
+      require_atomic? false
+
+      validate {<%= @app_module %>.Accounts.Validations.ValidateEmail, []}
+    end
+
+    update :update_password do
+      accept []
+      require_atomic? false
+
+      argument :current_password, :string do
+        allow_nil? false
+        sensitive? true
+      end
+
+      argument :password, :string do
+        allow_nil? false
+        sensitive? true
+        constraints min_length: 8, max_length: 72
+      end
+
+      argument :password_confirmation, :string do
+        allow_nil? false
+        sensitive? true
+      end
+
+      validate confirm(:password, :password_confirmation)
+
+      change fn changeset, _context ->
+        current_password = Ash.Changeset.get_argument(changeset, :current_password)
+        user = changeset.data
+
+        if <%= @app_module %>.Accounts.User.valid_password?(user, current_password) do
+          password = Ash.Changeset.get_argument(changeset, :password)
+          hashed = Bcrypt.hash_pwd_salt(password)
+          Ash.Changeset.change_attribute(changeset, :hashed_password, hashed)
+        else
+          Ash.Changeset.add_error(changeset, field: :current_password, message: "is not valid")
+        end
+      end
+    end
+  end
+
+  identities do
+    identity :unique_email, [:email]
+  end
+
+  # ============================================================================
+  # Billable Behaviour Implementation
+  # ============================================================================
+
+  @impl <%= @app_module %>.Billing.Billable
+  def billable_type, do: "user"
+
+  @impl <%= @app_module %>.Billing.Billable
+  def billable_id(%__MODULE__{id: id}), do: to_string(id)
+
+  @impl <%= @app_module %>.Billing.Billable
+  def billable_email(%__MODULE__{email: email}), do: to_string(email)
+
+  @doc """
+  Verifies the password against the hashed password.
+  """
+  def valid_password?(%__MODULE__{hashed_password: hashed_password}, password)
+      when is_binary(hashed_password) and byte_size(password) > 0 do
+    Bcrypt.verify_pass(password, hashed_password)
+  end
+
+  def valid_password?(_, _) do
+    Bcrypt.no_user_verify()
+    false
+  end
+end

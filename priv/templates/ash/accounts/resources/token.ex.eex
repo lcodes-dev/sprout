@@ -1,0 +1,27 @@
+defmodule <%= @app_module %>.Accounts.Token do
+  @moduledoc """
+  Token resource for AshAuthentication.
+
+  Stores JWT tokens for session management, password reset, and email confirmation.
+  """
+
+  use Ash.Resource,
+    domain: <%= @app_module %>.Accounts,
+    data_layer: AshPostgres.DataLayer,
+    extensions: [AshAuthentication.TokenResource]
+
+  postgres do
+    table "tokens"
+    repo <%= @app_module %>.Repo
+  end
+
+  policies do
+    bypass AshAuthentication.Checks.AshAuthenticationInteraction do
+      authorize_if always()
+    end
+
+    policy always() do
+      forbid_if always()
+    end
+  end
+end

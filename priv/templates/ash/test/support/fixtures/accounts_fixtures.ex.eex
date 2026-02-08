@@ -1,0 +1,55 @@
+defmodule <%= @app_module %>.AccountsFixtures do
+  @moduledoc """
+  This module defines test helpers for creating
+  entities via the `<%= @app_module %>.Accounts` domain.
+  """
+
+  alias <%= @app_module %>.Accounts.User
+
+  def unique_user_email, do: "user#{System.unique_integer()}@example.com"
+  def valid_user_password, do: "Hello123!"
+
+  def valid_user_attributes(attrs \\ %{}) do
+    Enum.into(attrs, %{
+      email: unique_user_email(),
+      password: valid_user_password(),
+      password_confirmation: valid_user_password()
+    })
+  end
+
+  def user_fixture(attrs \\ %{}) do
+    params = valid_user_attributes(attrs)
+    strategy = AshAuthentication.Info.strategy!(User, :password)
+
+    {:ok, user} =
+      AshAuthentication.Strategy.action(strategy, :register, %{
+        "email" => params.email,
+        "password" => params.password,
+        "password_confirmation" => params.password_confirmation
+      })
+
+    # Confirm the user
+    user
+    |> Ash.Changeset.for_update(:confirm, %{})
+    |> Ash.update!(authorize?: false)
+  end
+
+  def unconfirmed_user_fixture(attrs \\ %{}) do
+    params = valid_user_attributes(attrs)
+    strategy = AshAuthentication.Info.strategy!(User, :password)
+
+    {:ok, user} =
+      AshAuthentication.Strategy.action(strategy, :register, %{
+        "email" => params.email,
+        "password" => params.password,
+        "password_confirmation" => params.password_confirmation
+      })
+
+    user
+  end
+
+  def user_scope_fixture(user \\ nil) do
+    user = user || user_fixture()
+    <%= @app_module %>.Accounts.Scope.for_user(user)
+  end
+end

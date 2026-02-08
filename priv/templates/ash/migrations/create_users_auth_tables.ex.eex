@@ -1,0 +1,32 @@
+defmodule <%= @app_module %>.Repo.Migrations.CreateUsersAuthTables do
+  use Ecto.Migration
+
+  def change do
+    execute "CREATE EXTENSION IF NOT EXISTS citext", ""
+
+    # Users table
+    create table(:users, primary_key: false) do
+      add :id, :uuid, null: false, primary_key: true
+      add :email, :citext, null: false
+      add :hashed_password, :string, null: false
+      add :confirmed_at, :utc_datetime_usec
+
+      timestamps(type: :utc_datetime_usec)
+    end
+
+    create unique_index(:users, [:email])
+
+    # Tokens table for AshAuthentication
+    create table(:tokens, primary_key: false) do
+      add :jti, :string, null: false, primary_key: true
+      add :aud, :string, null: false
+      add :iss, :string, null: false
+      add :sub, :string, null: false
+      add :exp, :utc_datetime, null: false
+      add :purpose, :string, null: false
+      add :extra_data, :map
+
+      timestamps(type: :utc_datetime_usec, updated_at: false)
+    end
+  end
+end
