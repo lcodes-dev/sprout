@@ -1,0 +1,93 @@
+defmodule <%= @web_module %>.UserAuthTest do
+  use <%= @web_module %>.ConnCase, async: true
+
+  alias <%= @web_module %>.UserAuth
+
+  import <%= @app_module %>.AccountsFixtures
+
+  setup %{conn: conn} do
+    conn =
+      conn
+      |> Map.replace!(:secret_key_base, <%= @web_module %>.Endpoint.config(:secret_key_base))
+      |> init_test_session(%{})
+
+    %{conn: conn, user: user_fixture()}
+  end
+
+  describe "log_in_user/3" do
+    test "stores the user token in the session", %{conn: conn, user: user} do
+      # Sign in to get a token
+      strategy = AshAuthentication.Info.strategy!(<%= @app_module %>.Accounts.User, :password)
+
+      {:ok, user_with_token} =
+        AshAuthentication.Strategy.action(strategy, :sign_in, %{
+          "email" => to_string(user.email),
+          "password" => valid_user_password()
+        })
+
+      conn = UserAuth.log_in_user(conn, user_with_token)
+
+      assert token = get_session(conn, :user_token)
+      assert is_binary(token)
+      assert redirected_to(conn) == "/dashboard"
+    end
+  end
+
+  describe "log_out_user/1" do
+    test "clears session and redirects", %{conn: conn} do
+      conn =
+        conn
+        |> put_session(:user_token, "some_token")
+        |> UserAuth.log_out_user()
+
+      assert redirected_to(conn) == "/"
+      refute get_session(conn, :user_token)
+    end
+  end
+
+  describe "require_authenticated_user/2" do
+    test "redirects if user is not authenticated", %{conn: conn} do
+      conn =
+        conn
+        |> assign(:current_scope, nil)
+        |> UserAuth.require_authenticated_user([])
+
+      assert conn.halted
+      assert redirected_to(conn) == "/users/log-in"
+    end
+
+    test "does not redirect if user is authenticated", %{conn: conn, user: user} do
+      scope = <%= @app_module %>.Accounts.Scope.for_user(user)
+
+      conn =
+        conn
+        |> assign(:current_scope, scope)
+        |> UserAuth.require_authenticated_user([])
+
+      refute conn.halted
+    end
+  end
+
+  describe "redirect_if_user_is_authenticated/2" do
+    test "redirects if user is authenticated", %{conn: conn, user: user} do
+      scope = <%= @app_module %>.Accounts.Scope.for_user(user)
+
+      conn =
+        conn
+        |> assign(:current_scope, scope)
+        |> UserAuth.redirect_if_user_is_authenticated([])
+
+      assert conn.halted
+      assert redirected_to(conn) == "/dashboard"
+    end
+
+    test "does not redirect if user is not authenticated", %{conn: conn} do
+      conn =
+        conn
+        |> assign(:current_scope, nil)
+        |> UserAuth.redirect_if_user_is_authenticated([])
+
+      refute conn.halted
+    end
+  end
+end

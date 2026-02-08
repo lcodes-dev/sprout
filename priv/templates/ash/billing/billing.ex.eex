@@ -1,0 +1,99 @@
+defmodule <%= @app_module %>.Billing do
+  @moduledoc """
+  The Billing domain.
+
+  Uses Ash Framework for declarative resource management with Paddle integration.
+
+  ## Customer Management
+
+      Billing.get_or_create_customer(user)
+      Billing.customer_portal_url(user)
+
+  ## Subscriptions
+
+      Billing.subscribed?(user, "pro")
+      Billing.subscription(user, "default")
+      Billing.cancel_subscription(subscription)
+
+  ## Purchases
+
+      Billing.has_purchased?(user, "course-elixir")
+      Billing.purchase(user, "course-elixir")
+
+  ## Credits
+
+      Billing.get_credit_balance(user)
+      Billing.spend_credits(user, 10, "Generated image")
+  """
+
+  use Ash.Domain
+
+  resources do
+    resource <%= @app_module %>.Billing.BillableCustomer
+    resource <%= @app_module %>.Billing.Product
+    resource <%= @app_module %>.Billing.Subscription
+    resource <%= @app_module %>.Billing.Purchase
+    resource <%= @app_module %>.Billing.CreditSpend
+  end
+
+  alias <%= @app_module %>.Billing.{Customers, Subscriptions, Purchases, Credits}
+
+  # Customer Management
+  defdelegate get_or_create_customer(entity), to: Customers
+  defdelegate customer_portal_url(entity), to: Customers
+
+  # Subscriptions
+  defdelegate subscribed?(entity, name \\ "default"), to: Subscriptions
+  defdelegate subscription(entity, name \\ "default"), to: Subscriptions, as: :get_subscription
+  defdelegate list_subscriptions(entity), to: Subscriptions
+  defdelegate cancel_subscription(subscription, opts \\ []), to: Subscriptions
+  defdelegate pause_subscription(subscription, opts \\ []), to: Subscriptions
+  defdelegate resume_subscription(subscription, opts \\ []), to: Subscriptions
+  defdelegate grant_subscription(entity, product_slug, granted_by, opts \\ []), to: Subscriptions
+
+  # Purchases
+  defdelegate has_purchased?(entity, product_slug), to: Purchases
+  defdelegate purchase(entity, product_slug), to: Purchases, as: :get_purchase
+  defdelegate list_purchases(entity), to: Purchases
+  defdelegate grant_purchase(entity, product_slug, granted_by, opts \\ []), to: Purchases
+  defdelegate revoke_purchase(purchase), to: Purchases, as: :revoke_access
+
+  # Credits
+  defdelegate get_credit_balance(entity), to: Credits
+  defdelegate spend_credits(entity, amount, description, opts \\ []), to: Credits
+  defdelegate grant_credits(entity, amount, reason, granted_by, opts \\ []), to: Credits
+  defdelegate list_credit_spends(entity, opts \\ []), to: Credits
+  defdelegate list_credit_purchases(entity), to: Credits
+
+  # Products
+  def get_product_by_slug(slug) do
+    <%= @app_module %>.Billing.Product
+    |> Ash.get(:get_by_slug, %{slug: slug})
+    |> case do
+      {:ok, product} -> product
+      _ -> nil
+    end
+  end
+
+  def list_products do
+    <%= @app_module %>.Billing.Product
+    |> Ash.read!(:list_active)
+  end
+
+  def list_products_by_type(type) do
+    <%= @app_module %>.Billing.Product
+    |> Ash.read!(:list_by_type, %{type: type})
+  end
+
+  def create_product(attrs) do
+    <%= @app_module %>.Billing.Product
+    |> Ash.Changeset.for_create(:create, attrs)
+    |> Ash.create()
+  end
+
+  def update_product(product, attrs) do
+    product
+    |> Ash.Changeset.for_update(:update, attrs)
+    |> Ash.update()
+  end
+end

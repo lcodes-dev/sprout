@@ -1,0 +1,112 @@
+defmodule <%= @app_module %>.Billing.Customers do
+  @moduledoc """
+  Customer management for billing using Ash resources.
+  """
+
+  alias <%= @app_module %>.Billing.BillableCustomer
+  alias <%= @app_module %>.Billing.Billable
+  alias <%= @app_module %>.Billing.Paddle.Client
+
+  def get_or_create_customer(entity) do
+    billable_type = entity.__struct__.billable_type()
+    billable_id = to_string(entity.__struct__.billable_id(entity))
+
+    case get_customer(billable_type, billable_id) do
+      nil -> create_customer(entity)
+      customer -> {:ok, customer}
+    end
+  end
+
+  def get_customer(billable_type, billable_id) do
+    case Ash.get(BillableCustomer, :get_by_billable, %{
+           billable_type: billable_type,
+           billable_id: to_string(billable_id)
+         }) do
+      {:ok, customer} -> customer
+      _ -> nil
+    end
+  end
+
+  def get_by_paddle_id(paddle_customer_id) do
+    case Ash.get(BillableCustomer, :get_by_paddle_id, %{paddle_customer_id: paddle_customer_id}) do
+      {:ok, customer} -> customer
+      _ -> nil
+    end
+  end
+
+  def get_or_create_by_paddle_id(paddle_customer_id) do
+    case get_by_paddle_id(paddle_customer_id) do
+      nil -> {:error, :customer_not_found}
+      customer -> {:ok, customer}
+    end
+  end
+
+  def create_customer(entity) do
+    billable_type = entity.__struct__.billable_type()
+    billable_id = to_string(entity.__struct__.billable_id(entity))
+
+    BillableCustomer
+    |> Ash.Changeset.for_create(:create, %{
+      billable_type: billable_type,
+      billable_id: billable_id
+    })
+    |> Ash.create()
+  end
+
+  def link_paddle_customer(customer, paddle_customer_id) do
+    customer
+    |> Ash.Changeset.for_update(:link_paddle_customer, %{paddle_customer_id: paddle_customer_id})
+    |> Ash.update()
+  end
+
+  def create_paddle_customer(entity, customer) do
+    email = entity.__struct__.billable_email(entity)
+
+    name =
+      if function_exported?(entity.__struct__, :billable_name, 1) do
+        entity.__struct__.billable_name(entity)
+      else
+        nil
+      end
+
+    opts = [email: email]
+    opts = if name, do: Keyword.put(opts, :name, name), else: opts
+
+    case Client.create_customer(opts) do
+      {:ok, paddle_customer} ->
+        link_paddle_customer(customer, paddle_customer["id"])
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  def ensure_paddle_customer(entity, customer) do
+    if customer.paddle_customer_id do
+      {:ok, customer}
+    else
+      create_paddle_customer(entity, customer)
+    end
+  end
+
+  def customer_portal_url(entity) do
+    with {:ok, customer} <- get_or_create_customer(entity),
+         {:ok, customer} <- ensure_paddle_customer(entity, customer),
+         {:ok, session} <- Client.create_portal_session(customer.paddle_customer_id) do
+      {:ok, session["urls"]["general"]["overview"]}
+    end
+  end
+
+  def load_billable_entity(%BillableCustomer{billable_type: type, billable_id: id}) do
+    case Billable.module_for_type(type) do
+      nil ->
+        {:error, :unknown_billable_type}
+
+      module ->
+        case Ash.get(module, id) do
+          {:ok, entity} -> {:ok, entity}
+          _ -> {:error, :not_found}
+        end
+    end
+  end
+end

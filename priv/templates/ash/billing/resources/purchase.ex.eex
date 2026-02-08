@@ -1,0 +1,126 @@
+defmodule <%= @app_module %>.Billing.Purchase do
+  @moduledoc """
+  Represents a one-time purchase for a billable customer.
+
+  Purchases can be:
+  - One-time products (courses, books, etc.) - provides gated access
+  - Credit packages - grants credits that can be spent on features
+  """
+
+  use Ash.Resource,
+    domain: <%= @app_module %>.Billing,
+    data_layer: AshPostgres.DataLayer
+
+  postgres do
+    table "purchases"
+    repo <%= @app_module %>.Repo
+  end
+
+  attributes do
+    integer_primary_key :id
+
+    attribute :paddle_transaction_id, :string, public?: true
+    attribute :status, :string, allow_nil?: false, public?: true
+    attribute :credits_granted, :integer, default: 0, public?: true
+    attribute :credits_remaining, :integer, default: 0, public?: true
+    attribute :credits_expire_at, :utc_datetime, public?: true
+    attribute :purchased_at, :utc_datetime, allow_nil?: false, public?: true
+    attribute :refunded_at, :utc_datetime, public?: true
+    attribute :access_revoked_at, :utc_datetime, public?: true
+    attribute :granted_by, :integer, public?: true
+    attribute :grant_reason, :string, public?: true
+
+    create_timestamp :inserted_at
+    update_timestamp :updated_at
+  end
+
+  relationships do
+    belongs_to :billable_customer, <%= @app_module %>.Billing.BillableCustomer, allow_nil?: false
+    belongs_to :product, <%= @app_module %>.Billing.Product, allow_nil?: true
+  end
+
+  actions do
+    defaults [:read]
+
+    create :create_from_paddle do
+      accept [
+        :billable_customer_id, :product_id, :paddle_transaction_id,
+        :status, :credits_granted, :credits_remaining, :credits_expire_at, :purchased_at
+      ]
+    end
+
+    create :grant do
+      accept [
+        :billable_customer_id, :product_id, :status, :credits_granted,
+        :credits_remaining, :credits_expire_at, :purchased_at,
+        :granted_by, :grant_reason
+      ]
+    end
+
+    update :refund do
+      accept []
+      change set_attribute(:status, "refunded")
+      change set_attribute(:refunded_at, &DateTime.utc_now/0)
+      change set_attribute(:access_revoked_at, &DateTime.utc_now/0)
+      change set_attribute(:credits_remaining, 0)
+    end
+
+    update :deduct_credits do
+      accept []
+      argument :amount, :integer, allow_nil?: false
+
+      change fn changeset, _context ->
+        amount = Ash.Changeset.get_argument(changeset, :amount)
+        current = changeset.data.credits_remaining
+        new_remaining = current - amount
+
+        if new_remaining < 0 do
+          Ash.Changeset.add_error(changeset, field: :credits_remaining, message: "insufficient credits")
+        else
+          Ash.Changeset.change_attribute(changeset, :credits_remaining, new_remaining)
+        end
+      end
+    end
+
+    read :get_by_paddle_id do
+      argument :paddle_transaction_id, :string, allow_nil?: false
+      get? true
+      filter expr(paddle_transaction_id == ^arg(:paddle_transaction_id))
+    end
+
+    read :for_customer do
+      argument :billable_customer_id, :integer, allow_nil?: false
+      filter expr(billable_customer_id == ^arg(:billable_customer_id))
+    end
+
+    read :with_credits do
+      argument :billable_customer_id, :integer, allow_nil?: false
+      filter expr(
+        billable_customer_id == ^arg(:billable_customer_id) and
+        status == "completed" and
+        credits_remaining > 0
+      )
+      prepare build(sort: [inserted_at: :asc])
+    end
+  end
+
+  identities do
+    identity :unique_paddle_transaction, [:paddle_transaction_id]
+  end
+
+  @doc """
+  Returns true if the purchase grants access (not refunded).
+  """
+  def has_access?(%__MODULE__{status: "completed", access_revoked_at: nil}), do: true
+  def has_access?(_), do: false
+
+  @doc """
+  Returns true if the purchase has remaining credits that haven't expired.
+  """
+  def has_credits?(%__MODULE__{status: "completed", credits_remaining: remaining, credits_expire_at: expires_at})
+      when remaining > 0 do
+    is_nil(expires_at) or DateTime.compare(expires_at, DateTime.utc_now()) == :gt
+  end
+
+  def has_credits?(_), do: false
+end

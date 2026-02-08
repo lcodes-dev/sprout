@@ -1,0 +1,116 @@
+defmodule <%= @app_module %>.Billing.Subscription do
+  @moduledoc """
+  Represents a subscription for a billable customer.
+
+  Subscriptions can be created through Paddle payments or granted by admins.
+  Status is synced via Paddle webhooks.
+  """
+
+  use Ash.Resource,
+    domain: <%= @app_module %>.Billing,
+    data_layer: AshPostgres.DataLayer
+
+  postgres do
+    table "subscriptions"
+    repo <%= @app_module %>.Repo
+  end
+
+  attributes do
+    integer_primary_key :id
+
+    attribute :name, :string, default: "default", public?: true
+    attribute :paddle_subscription_id, :string, public?: true
+    attribute :paddle_price_id, :string, public?: true
+
+    attribute :status, :string do
+      allow_nil? false
+      public? true
+      constraints one_of: ["active", "trialing", "past_due", "paused", "canceled"]
+    end
+
+    attribute :quantity, :integer, default: 1, public?: true
+    attribute :trial_ends_at, :utc_datetime, public?: true
+    attribute :paused_at, :utc_datetime, public?: true
+    attribute :current_period_start, :utc_datetime, public?: true
+    attribute :current_period_end, :utc_datetime, public?: true
+    attribute :canceled_at, :utc_datetime, public?: true
+    attribute :ends_at, :utc_datetime, public?: true
+    attribute :granted_by, :integer, public?: true
+    attribute :grant_reason, :string, public?: true
+
+    create_timestamp :inserted_at
+    update_timestamp :updated_at
+  end
+
+  relationships do
+    belongs_to :billable_customer, <%= @app_module %>.Billing.BillableCustomer, allow_nil?: false
+    belongs_to :product, <%= @app_module %>.Billing.Product, allow_nil?: true
+  end
+
+  actions do
+    defaults [:read]
+
+    create :create_from_paddle do
+      accept [
+        :billable_customer_id, :product_id, :name, :paddle_subscription_id,
+        :paddle_price_id, :status, :quantity, :trial_ends_at,
+        :current_period_start, :current_period_end
+      ]
+    end
+
+    create :grant do
+      accept [
+        :billable_customer_id, :product_id, :name, :status,
+        :ends_at, :granted_by, :grant_reason
+      ]
+    end
+
+    update :update_status do
+      accept [:status, :paused_at, :canceled_at, :ends_at, :current_period_start, :current_period_end]
+    end
+
+    read :get_by_paddle_id do
+      argument :paddle_subscription_id, :string, allow_nil?: false
+      get? true
+      filter expr(paddle_subscription_id == ^arg(:paddle_subscription_id))
+    end
+
+    read :for_customer do
+      argument :billable_customer_id, :integer, allow_nil?: false
+      filter expr(billable_customer_id == ^arg(:billable_customer_id))
+    end
+
+    read :active_for_customer do
+      argument :billable_customer_id, :integer, allow_nil?: false
+      argument :name, :string, default: "default"
+      filter expr(
+        billable_customer_id == ^arg(:billable_customer_id) and
+        name == ^arg(:name) and
+        status in ["active", "trialing"]
+      )
+    end
+  end
+
+  identities do
+    identity :unique_paddle_subscription, [:paddle_subscription_id]
+  end
+
+  @doc """
+  Returns true if the subscription is currently active.
+  """
+  def active?(%__MODULE__{status: status, ends_at: ends_at}) do
+    status in ["active", "trialing"] and
+      (is_nil(ends_at) or DateTime.compare(ends_at, DateTime.utc_now()) == :gt)
+  end
+
+  @doc """
+  Returns true if the subscription has access (active or in grace period).
+  """
+  def has_access?(%__MODULE__{status: status, ends_at: ends_at}) do
+    cond do
+      status in ["active", "trialing"] -> true
+      status == "canceled" and not is_nil(ends_at) -> DateTime.compare(ends_at, DateTime.utc_now()) == :gt
+      true -> false
+    end
+  end
+end

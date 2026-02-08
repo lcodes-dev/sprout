@@ -1,0 +1,110 @@
+defmodule <%= @app_module %>.Billing.Subscriptions do
+  @moduledoc """
+  Subscription management using Ash resources.
+  """
+
+  alias <%= @app_module %>.Billing.{Customers, Subscription, Product}
+  alias <%= @app_module %>.Billing.Paddle.Client
+
+  def subscribed?(entity, name \\ "default") do
+    case get_subscription(entity, name) do
+      nil -> false
+      sub -> Subscription.has_access?(sub)
+    end
+  end
+
+  def get_subscription(entity, name \\ "default") do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity) do
+      case Ash.read(Subscription, :active_for_customer, %{
+             billable_customer_id: customer.id,
+             name: name
+           }) do
+        {:ok, [sub | _]} -> sub
+        _ -> nil
+      end
+    else
+      _ -> nil
+    end
+  end
+
+  def list_subscriptions(entity) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity) do
+      Ash.read!(Subscription, :for_customer, %{billable_customer_id: customer.id})
+    else
+      _ -> []
+    end
+  end
+
+  def get_by_paddle_id(paddle_subscription_id) do
+    case Ash.get(Subscription, :get_by_paddle_id, %{paddle_subscription_id: paddle_subscription_id}) do
+      {:ok, sub} -> sub
+      _ -> nil
+    end
+  end
+
+  def create_from_paddle(attrs) do
+    Subscription
+    |> Ash.Changeset.for_create(:create_from_paddle, attrs)
+    |> Ash.create()
+  end
+
+  def update_status(subscription, attrs) do
+    subscription
+    |> Ash.Changeset.for_update(:update_status, attrs)
+    |> Ash.update()
+  end
+
+  def cancel_subscription(subscription, opts \\ []) do
+    if subscription.paddle_subscription_id && !opts[:skip_paddle] do
+      case Client.cancel_subscription(subscription.paddle_subscription_id, effective_from: "next_billing_period") do
+        {:ok, _} -> update_status(subscription, %{status: "canceled", canceled_at: DateTime.utc_now(:second)})
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      update_status(subscription, %{status: "canceled", canceled_at: DateTime.utc_now(:second)})
+    end
+  end
+
+  def pause_subscription(subscription, opts \\ []) do
+    if subscription.paddle_subscription_id && !opts[:skip_paddle] do
+      case Client.pause_subscription(subscription.paddle_subscription_id) do
+        {:ok, _} -> update_status(subscription, %{status: "paused", paused_at: DateTime.utc_now(:second)})
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      update_status(subscription, %{status: "paused", paused_at: DateTime.utc_now(:second)})
+    end
+  end
+
+  def resume_subscription(subscription, opts \\ []) do
+    if subscription.paddle_subscription_id && !opts[:skip_paddle] do
+      case Client.resume_subscription(subscription.paddle_subscription_id) do
+        {:ok, _} -> update_status(subscription, %{status: "active", paused_at: nil})
+        {:error, reason} -> {:error, reason}
+      end
+    else
+      update_status(subscription, %{status: "active", paused_at: nil})
+    end
+  end
+
+  def grant_subscription(entity, product_slug, granted_by, opts \\ []) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity) do
+      product = <%= @app_module %>.Billing.get_product_by_slug(product_slug)
+      name = Keyword.get(opts, :name, "default")
+
+      attrs = %{
+        billable_customer_id: customer.id,
+        product_id: product && product.id,
+        name: name,
+        status: "active",
+        ends_at: Keyword.get(opts, :ends_at),
+        granted_by: granted_by,
+        grant_reason: Keyword.get(opts, :grant_reason)
+      }
+
+      Subscription
+      |> Ash.Changeset.for_create(:grant, attrs)
+      |> Ash.create()
+    end
+  end
+end

@@ -1,0 +1,82 @@
+defmodule <%= @app_module %>.Billing.Purchases do
+  @moduledoc """
+  Purchase management using Ash resources.
+  """
+
+  alias <%= @app_module %>.Billing.{Customers, Purchase}
+
+  def has_purchased?(entity, product_slug) do
+    case get_purchase(entity, product_slug) do
+      nil -> false
+      purchase -> Purchase.has_access?(purchase)
+    end
+  end
+
+  def get_purchase(entity, product_slug) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity),
+         product when not is_nil(product) <- <%= @app_module %>.Billing.get_product_by_slug(product_slug) do
+      case Ash.read(Purchase, :for_customer, %{billable_customer_id: customer.id}) do
+        {:ok, purchases} ->
+          Enum.find(purchases, fn p -> p.product_id == product.id end)
+
+        _ ->
+          nil
+      end
+    else
+      _ -> nil
+    end
+  end
+
+  def list_purchases(entity) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity) do
+      Ash.read!(Purchase, :for_customer, %{billable_customer_id: customer.id})
+    else
+      _ -> []
+    end
+  end
+
+  def get_by_paddle_id(paddle_transaction_id) do
+    case Ash.get(Purchase, :get_by_paddle_id, %{paddle_transaction_id: paddle_transaction_id}) do
+      {:ok, purchase} -> purchase
+      _ -> nil
+    end
+  end
+
+  def create_from_paddle(attrs) do
+    Purchase
+    |> Ash.Changeset.for_create(:create_from_paddle, attrs)
+    |> Ash.create()
+  end
+
+  def refund(purchase) do
+    purchase
+    |> Ash.Changeset.for_update(:refund, %{})
+    |> Ash.update()
+  end
+
+  def revoke_access(purchase) do
+    refund(purchase)
+  end
+
+  def grant_purchase(entity, product_slug, granted_by, opts \\ []) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity) do
+      product = <%= @app_module %>.Billing.get_product_by_slug(product_slug)
+
+      attrs = %{
+        billable_customer_id: customer.id,
+        product_id: product && product.id,
+        status: "completed",
+        credits_granted: Keyword.get(opts, :credits_granted, 0),
+        credits_remaining: Keyword.get(opts, :credits_granted, 0),
+        credits_expire_at: Keyword.get(opts, :credits_expire_at),
+        purchased_at: DateTime.utc_now(:second),
+        granted_by: granted_by,
+        grant_reason: Keyword.get(opts, :grant_reason)
+      }
+
+      Purchase
+      |> Ash.Changeset.for_create(:grant, attrs)
+      |> Ash.create()
+    end
+  end
+end

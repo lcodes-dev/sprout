@@ -1,0 +1,29 @@
+defmodule <%= @app_module %>.Accounts.Validations.ValidateEmail do
+  @moduledoc """
+  Validates email format for Ash changesets.
+  """
+
+  use Ash.Resource.Validation
+
+  @impl true
+  def validate(changeset, _opts, _context) do
+    case Ash.Changeset.get_attribute(changeset, :email) do
+      nil ->
+        :ok
+
+      email ->
+        email = to_string(email)
+
+        cond do
+          not String.match?(email, ~r/^[^\s]+@[^\s]+$/) ->
+            {:error, field: :email, message: "must have the @ sign and no spaces"}
+
+          String.length(email) > 160 ->
+            {:error, field: :email, message: "must be at most 160 characters"}
+
+          true ->
+            :ok
+        end
+    end
+  end
+end

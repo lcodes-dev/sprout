@@ -1,0 +1,69 @@
+defmodule <%= @app_module %>.Billing.BillableCustomer do
+  @moduledoc """
+  Represents a billable customer linked to Paddle.
+
+  Uses polymorphic associations via billable_id and billable_type
+  to support billing any entity (users, organizations, etc.).
+  """
+
+  use Ash.Resource,
+    domain: <%= @app_module %>.Billing,
+    data_layer: AshPostgres.DataLayer
+
+  postgres do
+    table "billable_customers"
+    repo <%= @app_module %>.Repo
+  end
+
+  attributes do
+    integer_primary_key :id
+
+    attribute :billable_id, :string, allow_nil?: false, public?: true
+    attribute :billable_type, :string, allow_nil?: false, public?: true
+    attribute :paddle_customer_id, :string, public?: true
+    attribute :trial_ends_at, :utc_datetime, public?: true
+
+    create_timestamp :inserted_at
+    update_timestamp :updated_at
+  end
+
+  relationships do
+    has_many :subscriptions, <%= @app_module %>.Billing.Subscription
+    has_many :purchases, <%= @app_module %>.Billing.Purchase
+  end
+
+  actions do
+    defaults [:read]
+
+    create :create do
+      accept [:billable_id, :billable_type, :paddle_customer_id, :trial_ends_at]
+    end
+
+    update :update do
+      accept [:paddle_customer_id, :trial_ends_at]
+    end
+
+    update :link_paddle_customer do
+      accept []
+      argument :paddle_customer_id, :string, allow_nil?: false
+      change set_attribute(:paddle_customer_id, arg(:paddle_customer_id))
+    end
+
+    read :get_by_billable do
+      argument :billable_type, :string, allow_nil?: false
+      argument :billable_id, :string, allow_nil?: false
+      get? true
+      filter expr(billable_type == ^arg(:billable_type) and billable_id == ^arg(:billable_id))
+    end
+
+    read :get_by_paddle_id do
+      argument :paddle_customer_id, :string, allow_nil?: false
+      get? true
+      filter expr(paddle_customer_id == ^arg(:paddle_customer_id))
+    end
+  end
+
+  identities do
+    identity :unique_billable, [:billable_id, :billable_type]
+  end
+end

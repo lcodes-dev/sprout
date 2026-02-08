@@ -1,0 +1,111 @@
+defmodule <%= @app_module %>.AccountsTest do
+  use <%= @app_module %>.DataCase
+
+  alias <%= @app_module %>.Accounts.User
+
+  import <%= @app_module %>.AccountsFixtures
+
+  describe "registration" do
+    test "registers a user with valid data" do
+      params = valid_user_attributes()
+      strategy = AshAuthentication.Info.strategy!(User, :password)
+
+      assert {:ok, user} =
+               AshAuthentication.Strategy.action(strategy, :register, %{
+                 "email" => params.email,
+                 "password" => params.password,
+                 "password_confirmation" => params.password_confirmation
+               })
+
+      assert to_string(user.email) == params.email
+      assert user.hashed_password != nil
+    end
+
+    test "rejects duplicate emails" do
+      params = valid_user_attributes()
+      strategy = AshAuthentication.Info.strategy!(User, :password)
+
+      {:ok, _user} =
+        AshAuthentication.Strategy.action(strategy, :register, %{
+          "email" => params.email,
+          "password" => params.password,
+          "password_confirmation" => params.password_confirmation
+        })
+
+      assert {:error, _} =
+               AshAuthentication.Strategy.action(strategy, :register, %{
+                 "email" => params.email,
+                 "password" => params.password,
+                 "password_confirmation" => params.password_confirmation
+               })
+    end
+  end
+
+  describe "sign_in" do
+    test "signs in with valid credentials" do
+      user = user_fixture()
+      strategy = AshAuthentication.Info.strategy!(User, :password)
+
+      assert {:ok, signed_in_user} =
+               AshAuthentication.Strategy.action(strategy, :sign_in, %{
+                 "email" => to_string(user.email),
+                 "password" => valid_user_password()
+               })
+
+      assert signed_in_user.id == user.id
+    end
+
+    test "rejects invalid password" do
+      user = user_fixture()
+      strategy = AshAuthentication.Info.strategy!(User, :password)
+
+      assert {:error, _} =
+               AshAuthentication.Strategy.action(strategy, :sign_in, %{
+                 "email" => to_string(user.email),
+                 "password" => "wrongpassword123"
+               })
+    end
+  end
+
+  describe "password management" do
+    test "updates password with valid current password" do
+      user = user_fixture()
+
+      assert {:ok, updated_user} =
+               Ash.update(user, :update_password, %{
+                 current_password: valid_user_password(),
+                 password: "NewPass456!",
+                 password_confirmation: "NewPass456!"
+               })
+
+      assert User.valid_password?(updated_user, "NewPass456!")
+    end
+
+    test "rejects update with wrong current password" do
+      user = user_fixture()
+
+      assert {:error, _} =
+               Ash.update(user, :update_password, %{
+                 current_password: "wrongpassword",
+                 password: "NewPass456!",
+                 password_confirmation: "NewPass456!"
+               })
+    end
+  end
+
+  describe "User.valid_password?/2" do
+    test "returns true for valid password" do
+      user = user_fixture()
+      assert User.valid_password?(user, valid_user_password())
+    end
+
+    test "returns false for invalid password" do
+      user = user_fixture()
+      refute User.valid_password?(user, "wrongpassword")
+    end
+
+    test "returns false for nil user" do
+      refute User.valid_password?(nil, "anypassword")
+    end
+  end
+end

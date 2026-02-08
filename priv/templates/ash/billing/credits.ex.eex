@@ -1,0 +1,125 @@
+defmodule <%= @app_module %>.Billing.Credits do
+  @moduledoc """
+  Credit system using Ash resources.
+
+  Credits are tracked on Purchase records (credits_granted, credits_remaining).
+  Spending uses FIFO (oldest credits spent first).
+  """
+
+  alias <%= @app_module %>.Billing.{Customers, Purchase, CreditSpend}
+  alias <%= @app_module %>.Repo
+
+  def get_credit_balance(entity) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity) do
+      case Ash.read(Purchase, :with_credits, %{billable_customer_id: customer.id}) do
+        {:ok, purchases} ->
+          purchases
+          |> Enum.filter(&Purchase.has_credits?/1)
+          |> Enum.reduce(0, fn p, acc -> acc + p.credits_remaining end)
+
+        _ ->
+          0
+      end
+    else
+      _ -> 0
+    end
+  end
+
+  def spend_credits(entity, amount, description, opts \\ []) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity),
+         {:ok, purchases} <- Ash.read(Purchase, :with_credits, %{billable_customer_id: customer.id}) do
+      valid_purchases =
+        purchases
+        |> Enum.filter(&Purchase.has_credits?/1)
+
+      total_available = Enum.reduce(valid_purchases, 0, fn p, acc -> acc + p.credits_remaining end)
+
+      if total_available < amount do
+        {:error, :insufficient_credits}
+      else
+        # FIFO spending within a transaction
+        Repo.transaction(fn ->
+          remaining_to_spend = spend_from_purchases(valid_purchases, amount)
+
+          if remaining_to_spend > 0 do
+            Repo.rollback(:insufficient_credits)
+          else
+            # Create audit record
+            {:ok, _spend} =
+              CreditSpend
+              |> Ash.Changeset.for_create(:create, %{
+                billable_customer_id: customer.id,
+                amount: amount,
+                description: description,
+                reference_type: Keyword.get(opts, :reference_type),
+                reference_id: Keyword.get(opts, :reference_id)
+              })
+              |> Ash.create()
+
+            {:ok, total_available - amount}
+          end
+        end)
+        |> case do
+          {:ok, result} -> result
+          {:error, reason} -> {:error, reason}
+        end
+      end
+    end
+  end
+
+  defp spend_from_purchases([], remaining), do: remaining
+  defp spend_from_purchases(_, 0), do: 0
+
+  defp spend_from_purchases([purchase | rest], remaining) do
+    deduct = min(purchase.credits_remaining, remaining)
+
+    {:ok, _} =
+      purchase
+      |> Ash.Changeset.for_update(:deduct_credits, %{amount: deduct})
+      |> Ash.update()
+
+    spend_from_purchases(rest, remaining - deduct)
+  end
+
+  def grant_credits(entity, amount, reason, granted_by, opts \\ []) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity) do
+      product_slug = Keyword.get(opts, :product_slug)
+      product = if product_slug, do: <%= @app_module %>.Billing.get_product_by_slug(product_slug)
+
+      attrs = %{
+        billable_customer_id: customer.id,
+        product_id: product && product.id,
+        status: "completed",
+        credits_granted: amount,
+        credits_remaining: amount,
+        credits_expire_at: Keyword.get(opts, :credits_expire_at),
+        purchased_at: DateTime.utc_now(:second),
+        granted_by: granted_by,
+        grant_reason: reason
+      }
+
+      Purchase
+      |> Ash.Changeset.for_create(:grant, attrs)
+      |> Ash.create()
+    end
+  end
+
+  def list_credit_spends(entity, opts \\ []) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity) do
+      Ash.read!(CreditSpend, :for_customer, %{billable_customer_id: customer.id})
+    else
+      _ -> []
+    end
+  end
+
+  def list_credit_purchases(entity) do
+    with {:ok, customer} <- Customers.get_or_create_customer(entity) do
+      case Ash.read(Purchase, :with_credits, %{billable_customer_id: customer.id}) do
+        {:ok, purchases} -> purchases
+        _ -> []
+      end
+    else
+      _ -> []
+    end
+  end
+end
