@@ -13,6 +13,7 @@ defmodule Mix.Tasks.Sprout.Install do
   - `--examples` - Include example Turbo controller demonstrating all features
   - `--no-auth` - Skip user authentication (auth is included by default)
   - `--no-payments` - Skip Paddle Billing integration (payments is included by default)
+  - `--no-feature-flags` - Skip feature flags system (feature flags is included by default)
 
   ## What Gets Installed
 
@@ -38,6 +39,12 @@ defmodule Mix.Tasks.Sprout.Install do
   - One-time purchases with gated access
   - Credit/token system
 
+  By default (with feature flags):
+  - Database-backed feature flags with ETS caching
+  - Percentage-based rollouts and actor targeting
+  - Admin interface for managing flags
+  - Plug for gating routes behind flags
+
   After installation, run:
 
   ```bash
@@ -56,16 +63,19 @@ defmodule Mix.Tasks.Sprout.Install do
       schema: [
         examples: :boolean,
         auth: :boolean,
-        payments: :boolean
+        payments: :boolean,
+        feature_flags: :boolean
       ],
       defaults: [
         examples: false,
         auth: true,
-        payments: true
+        payments: true,
+        feature_flags: true
       ],
       aliases: [
         e: :examples,
-        p: :payments
+        p: :payments,
+        f: :feature_flags
       ],
       adds_deps: [
         {:bcrypt_elixir, "~> 3.0"}
@@ -79,6 +89,7 @@ defmodule Mix.Tasks.Sprout.Install do
     include_examples? = Keyword.get(options, :examples, false)
     include_auth? = Keyword.get(options, :auth, true)
     include_payments? = Keyword.get(options, :payments, true)
+    include_feature_flags? = Keyword.get(options, :feature_flags, true)
 
     # Get app name from Mix project config (most reliable source)
     app_name = Mix.Project.config()[:app] |> to_string()
@@ -104,6 +115,7 @@ defmodule Mix.Tasks.Sprout.Install do
     Installing Hotwire Turbo, Alpine.js, and BasecoatUI...
     #{if include_auth?, do: "Including user authentication...", else: ""}
     #{if include_payments?, do: "Including Paddle payments integration...", else: ""}
+    #{if include_feature_flags?, do: "Including feature flags...", else: ""}
     """)
     # Create agent instruction files
     |> create_agents_md(assigns)
@@ -147,10 +159,12 @@ defmodule Mix.Tasks.Sprout.Install do
     |> maybe_add_auth(include_auth?, assigns)
     # Optional: Add payments (requires auth)
     |> maybe_add_payments(include_payments? and include_auth?, assigns)
-    |> add_final_notice(include_examples?, include_auth?, include_payments?)
+    # Optional: Add feature flags
+    |> maybe_add_feature_flags(include_feature_flags?, assigns)
+    |> add_final_notice(include_examples?, include_auth?, include_payments?, include_feature_flags?)
   end
 
-  defp add_final_notice(igniter, include_examples?, include_auth?, include_payments?) do
+  defp add_final_notice(igniter, include_examples?, include_auth?, include_payments?, include_feature_flags?) do
     Igniter.add_notice(igniter, """
 
     ✅ Sprout installed successfully!
@@ -161,6 +175,7 @@ defmodule Mix.Tasks.Sprout.Install do
     #{if include_auth?, do: "3. Restart your Phoenix server", else: "2. Restart your Phoenix server"}
     #{if include_examples?, do: "#{if include_auth?, do: "4", else: "3"}. Visit /turbo-example to see Turbo in action", else: ""}
     #{if include_payments?, do: "\n    For payments setup:\n    - Set PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, and PADDLE_CLIENT_TOKEN environment variables\n    - Configure products in the database\n    - Visit /billing to see the billing dashboard", else: ""}
+    #{if include_feature_flags?, do: "\n    For feature flags:\n    - Visit /admin/feature-flags to manage feature flags\n    - Use FeatureFlags.enabled?(\"flag_name\") to check flags in code\n    - Use the RequireFeature plug to gate routes", else: ""}
 
     Optional cleanup:
     - Remove empty folder: rm -rf lib/*_web/controllers/page_html
@@ -1627,6 +1642,193 @@ defmodule Mix.Tasks.Sprout.Install do
     |> Igniter.Project.Config.configure("test.exs", app_name, [Oban, :testing], :manual)
   end
 
+<<<<<<< claude/add-feature-flags-pKbgf
+  # ============================================================================
+  # Feature Flags (--feature_flags)
+  # ============================================================================
+
+  defp maybe_add_feature_flags(igniter, false, _assigns), do: igniter
+
+  defp maybe_add_feature_flags(igniter, true, assigns) do
+    igniter
+    |> create_feature_flags_context(assigns)
+    |> create_feature_flag_schema(assigns)
+    |> create_feature_flags_cache(assigns)
+    |> create_require_feature_plug(assigns)
+    |> create_feature_flag_controller(assigns)
+    |> create_feature_flags_migration(assigns)
+    |> create_feature_flags_tests(assigns)
+    |> update_application_for_feature_flags(assigns)
+    |> update_router_for_feature_flags(assigns)
+    |> add_feature_flags_config(assigns)
+  end
+
+  defp create_feature_flags_context(igniter, assigns) do
+    path = "#{assigns[:app_path]}/feature_flags.ex"
+    content = render_template("feature_flags/feature_flags.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_feature_flag_schema(igniter, assigns) do
+    path = "#{assigns[:app_path]}/feature_flags/schemas/feature_flag.ex"
+    content = render_template("feature_flags/feature_flags/schemas/feature_flag.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_feature_flags_cache(igniter, assigns) do
+    path = "#{assigns[:app_path]}/feature_flags/cache.ex"
+    content = render_template("feature_flags/feature_flags/cache.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_require_feature_plug(igniter, assigns) do
+    path = "#{assigns[:web_path]}/plugs/require_feature.ex"
+    content = render_template("feature_flags/plugs/require_feature.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_feature_flag_controller(igniter, assigns) do
+    web_path = assigns[:web_path]
+
+    controller_content = render_template("feature_flags/controllers/feature_flag/feature_flag_controller.ex.eex", assigns)
+    html_content = render_template("feature_flags/controllers/feature_flag/feature_flag_html.ex.eex", assigns)
+    index_template = File.read!(template_path("feature_flags/controllers/feature_flag/html/index.html.heex"))
+    form_template = File.read!(template_path("feature_flags/controllers/feature_flag/html/form.html.heex"))
+
+    igniter
+    |> Igniter.create_new_file("#{web_path}/controllers/feature_flag/feature_flag_controller.ex", controller_content, on_exists: :skip)
+    |> Igniter.create_new_file("#{web_path}/controllers/feature_flag/feature_flag_html.ex", html_content, on_exists: :skip)
+    |> Igniter.create_new_file("#{web_path}/controllers/feature_flag/html/index.html.heex", index_template, on_exists: :skip)
+    |> Igniter.create_new_file("#{web_path}/controllers/feature_flag/html/form.html.heex", form_template, on_exists: :skip)
+  end
+
+  defp create_feature_flags_migration(igniter, assigns) do
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
+    # Add 3 seconds to ensure it's after other migrations
+    timestamp = String.to_integer(timestamp) + 3 |> to_string()
+
+    path = "priv/repo/migrations/#{timestamp}_create_feature_flags.exs"
+    content = render_template("feature_flags/migrations/create_feature_flags.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_feature_flags_tests(igniter, assigns) do
+    app_name = assigns[:app_name]
+
+    # Create fixtures
+    fixtures_content = render_template("feature_flags/test/support/fixtures/feature_flags_fixtures.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "test/support/feature_flags_fixtures.ex", fixtures_content, on_exists: :skip)
+
+    # Create context test
+    context_test_content = render_template("feature_flags/test/feature_flags_test.exs.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "test/#{app_name}/feature_flags_test.exs", context_test_content, on_exists: :skip)
+
+    # Create controller test
+    controller_test_content = render_template("feature_flags/test/feature_flag_controller_test.exs.eex", assigns)
+    Igniter.create_new_file(igniter, "test/#{app_name}_web/feature_flag_controller_test.exs", controller_test_content, on_exists: :skip)
+  end
+
+  defp update_application_for_feature_flags(igniter, assigns) do
+    app_module = Module.concat([assigns[:app_module], "Application"])
+    cache_module = "#{assigns[:app_module]}.FeatureFlags.Cache"
+
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(app_module, fn zipper ->
+      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+
+      if String.contains?(node_string, "FeatureFlags.Cache") do
+        {:ok, zipper}
+      else
+        # Add FeatureFlags.Cache to children list after the Repo (or after Oban if present)
+        updated_string =
+          cond do
+            String.contains?(node_string, "Oban") ->
+              String.replace(
+                node_string,
+                ~r/(\{Oban,[^}]+\},)/,
+                "\\1\n      #{cache_module},"
+              )
+
+            true ->
+              String.replace(
+                node_string,
+                ~r/(#{assigns[:app_module]}\.Repo,)/,
+                "\\1\n      #{cache_module},"
+              )
+          end
+
+        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+      end
+    end)
+  end
+
+  defp update_router_for_feature_flags(igniter, assigns) do
+    web_module = assigns[:web_module]
+
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
+      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+
+      if String.contains?(node_string, "FeatureFlagController") do
+        {:ok, zipper}
+      else
+        feature_flags_routes =
+          if String.contains?(node_string, "require_authenticated_user") do
+            # Auth is installed, put feature flags behind auth
+            """
+            # Feature Flags admin (require auth)
+            scope "/admin", #{web_module} do
+              pipe_through [:browser, :require_authenticated_user]
+
+              get "/feature-flags", FeatureFlagController, :index
+              get "/feature-flags/new", FeatureFlagController, :new
+              post "/feature-flags", FeatureFlagController, :create
+              get "/feature-flags/:id/edit", FeatureFlagController, :edit
+              put "/feature-flags/:id", FeatureFlagController, :update
+              put "/feature-flags/:id/toggle", FeatureFlagController, :toggle
+              delete "/feature-flags/:id", FeatureFlagController, :delete
+            end
+            """
+          else
+            # No auth, just use browser pipeline
+            """
+            # Feature Flags admin
+            scope "/admin", #{web_module} do
+              pipe_through [:browser]
+
+              get "/feature-flags", FeatureFlagController, :index
+              get "/feature-flags/new", FeatureFlagController, :new
+              post "/feature-flags", FeatureFlagController, :create
+              get "/feature-flags/:id/edit", FeatureFlagController, :edit
+              put "/feature-flags/:id", FeatureFlagController, :update
+              put "/feature-flags/:id/toggle", FeatureFlagController, :toggle
+              delete "/feature-flags/:id", FeatureFlagController, :delete
+            end
+            """
+          end
+
+        updated_string = String.replace(
+          node_string,
+          ~r/(\n\s*)end\s*$/,
+          "\n\n  #{String.trim(feature_flags_routes)}\\1end"
+        )
+
+        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+      end
+    end)
+  end
+
+  defp add_feature_flags_config(igniter, assigns) do
+    app_name = String.to_atom(assigns[:app_name])
+    feature_flags_module = Module.concat([assigns[:app_module], "FeatureFlags"])
+
+    igniter
+    |> Igniter.Project.Config.configure("config.exs", app_name, [feature_flags_module, :cache_refresh_interval],
+      {:code, Sourceror.parse_string!(":timer.minutes(1)")})
+    |> Igniter.Project.Config.configure("test.exs", app_name, [feature_flags_module, :cache_refresh_interval],
+      {:code, Sourceror.parse_string!(":timer.seconds(1)")})
+  end
+=======
   defp update_default_policy_for_billing(igniter, assigns) do
     path = "#{assigns[:app_path]}/default_policy.ex"
     content = render_template("billing/default_policy_with_billing.ex.eex", assigns)
@@ -1637,4 +1839,5 @@ defmodule Mix.Tasks.Sprout.Install do
       {:ok, Igniter.Code.Common.parse_to_zipper!(content)}
     end)
   end
+>>>>>>> main
 end

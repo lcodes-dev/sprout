@@ -1,0 +1,82 @@
+defmodule <%= @app_module %>.FeatureFlags.Schemas.FeatureFlag do
+  @moduledoc """
+  Schema for feature flags.
+
+  Feature flags can be simple on/off toggles or include rules for
+  gradual rollouts and actor-based targeting.
+
+  ## Rules
+
+  The `rules` field is a map that can contain:
+
+    - `"percentage"` - Integer 0-100, enables the flag for a percentage of actors
+    - `"actor_ids"` - List of actor IDs that always have the flag enabled
+
+  When rules are present and the flag is enabled, `FeatureFlags.enabled_for?/2`
+  checks them in order: explicit actor IDs first, then percentage-based rollout.
+  """
+
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  schema "feature_flags" do
+    field :name, :string
+    field :description, :string
+    field :enabled, :boolean, default: false
+    field :rules, :map, default: %{}
+
+    timestamps(type: :utc_datetime)
+  end
+
+  @doc false
+  def changeset(feature_flag, attrs) do
+    feature_flag
+    |> cast(attrs, [:name, :description, :enabled, :rules])
+    |> validate_required([:name])
+    |> validate_format(:name, ~r/\A[a-z][a-z0-9_]*\z/,
+      message: "must start with a lowercase letter and contain only lowercase letters, numbers, and underscores"
+    )
+    |> unique_constraint(:name)
+    |> validate_rules()
+  end
+
+  defp validate_rules(changeset) do
+    case get_change(changeset, :rules) do
+      nil ->
+        changeset
+
+      rules when is_map(rules) ->
+        changeset
+        |> validate_percentage(rules)
+        |> validate_actor_ids(rules)
+
+      _ ->
+        add_error(changeset, :rules, "must be a map")
+    end
+  end
+
+  defp validate_percentage(changeset, %{"percentage" => pct})
+       when is_integer(pct) and pct >= 0 and pct <= 100 do
+    changeset
+  end
+
+  defp validate_percentage(changeset, %{"percentage" => _}) do
+    add_error(changeset, :rules, "percentage must be an integer between 0 and 100")
+  end
+
+  defp validate_percentage(changeset, _), do: changeset
+
+  defp validate_actor_ids(changeset, %{"actor_ids" => ids}) when is_list(ids) do
+    if Enum.all?(ids, &is_integer/1) do
+      changeset
+    else
+      add_error(changeset, :rules, "actor_ids must be a list of integers")
+    end
+  end
+
+  defp validate_actor_ids(changeset, %{"actor_ids" => _}) do
+    add_error(changeset, :rules, "actor_ids must be a list of integers")
+  end
+
+  defp validate_actor_ids(changeset, _), do: changeset
+end

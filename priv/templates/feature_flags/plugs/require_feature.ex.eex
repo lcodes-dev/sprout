@@ -1,0 +1,73 @@
+defmodule <%= @web_module %>.Plugs.RequireFeature do
+  @moduledoc """
+  Plug that requires a feature flag to be enabled.
+
+  Can check both global flags and actor-specific flags.
+
+  ## Usage
+
+  As a simple global flag check:
+
+      plug <%= @web_module %>.Plugs.RequireFeature, name: "new_dashboard"
+
+  With actor-based targeting (checks `enabled_for?` using the current user's ID):
+
+      plug <%= @web_module %>.Plugs.RequireFeature, name: "beta_feature", actor_based: true
+
+  ## Options
+
+    - `:name` - Required. The feature flag name to check.
+    - `:actor_based` - When `true`, uses the current user's ID for actor-based
+      flag checks. Defaults to `false`.
+    - `:redirect_to` - Path to redirect to when the flag is disabled.
+      Defaults to `"/"`.
+    - `:message` - Flash message to show when the flag is disabled.
+      Defaults to `"This feature is not currently available."`.
+  """
+
+  import Plug.Conn
+  import Phoenix.Controller
+
+  alias <%= @app_module %>.FeatureFlags
+
+  def init(opts) do
+    unless Keyword.has_key?(opts, :name) do
+      raise ArgumentError, "#{inspect(__MODULE__)} requires a :name option"
+    end
+
+    opts
+  end
+
+  def call(conn, opts) do
+    name = Keyword.fetch!(opts, :name)
+    actor_based? = Keyword.get(opts, :actor_based, false)
+    redirect_to = Keyword.get(opts, :redirect_to, "/")
+    message = Keyword.get(opts, :message, "This feature is not currently available.")
+
+    enabled? =
+      if actor_based? do
+        case get_actor_id(conn) do
+          nil -> FeatureFlags.enabled?(name)
+          actor_id -> FeatureFlags.enabled_for?(name, actor_id)
+        end
+      else
+        FeatureFlags.enabled?(name)
+      end
+
+    if enabled? do
+      conn
+    else
+      conn
+      |> put_flash(:error, message)
+      |> redirect(to: redirect_to)
+      |> halt()
+    end
+  end
+
+  defp get_actor_id(conn) do
+    case conn.assigns[:current_scope] do
+      %{user: %{id: id}} -> id
+      _ -> nil
+    end
+  end
+end

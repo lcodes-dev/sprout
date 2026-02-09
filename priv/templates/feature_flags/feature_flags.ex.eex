@@ -1,0 +1,288 @@
+defmodule <%= @app_module %>.FeatureFlags do
+  @moduledoc """
+  The FeatureFlags context.
+
+  Provides a simple, database-backed feature flag system with ETS caching
+  for fast lookups. Flags can be simple on/off toggles or include rules
+  for percentage-based rollouts and actor targeting.
+
+  ## Checking Flags
+
+      FeatureFlags.enabled?("dark_mode")
+      FeatureFlags.enabled_for?("beta_dashboard", user.id)
+
+  ## Managing Flags
+
+      FeatureFlags.create_flag(%{name: "dark_mode", description: "Enable dark mode"})
+      FeatureFlags.enable("dark_mode")
+      FeatureFlags.disable("dark_mode")
+      FeatureFlags.toggle("dark_mode")
+
+  ## Rules
+
+  Flags support rules for gradual rollouts:
+
+      # Enable for 25% of users
+      FeatureFlags.update_flag(flag, %{rules: %{"percentage" => 25}})
+
+      # Enable for specific users
+      FeatureFlags.update_flag(flag, %{rules: %{"actor_ids" => [1, 2, 3]}})
+
+      # Combine rules (actor IDs checked first, then percentage)
+      FeatureFlags.update_flag(flag, %{rules: %{"actor_ids" => [1], "percentage" => 50}})
+
+  ## Caching
+
+  Flags are cached in ETS for fast reads. The cache refreshes automatically
+  on a configurable interval and is also refreshed immediately when flags
+  are created, updated, or deleted through this context.
+
+  Configure the refresh interval:
+
+      config :<%= @app_name %>, <%= @app_module %>.FeatureFlags,
+        cache_refresh_interval: :timer.minutes(1)
+  """
+
+  import Ecto.Query
+
+  alias <%= @app_module %>.Repo
+  alias <%= @app_module %>.FeatureFlags.Cache
+  alias <%= @app_module %>.FeatureFlags.Schemas.FeatureFlag
+
+  # ============================================================================
+  # Flag Checks
+  # ============================================================================
+
+  @doc """
+  Checks if a feature flag is enabled.
+
+  Uses the ETS cache for fast lookups. Returns `false` if the flag doesn't exist.
+
+  ## Examples
+
+      iex> FeatureFlags.enabled?("dark_mode")
+      true
+
+      iex> FeatureFlags.enabled?("nonexistent")
+      false
+  """
+  def enabled?(name) when is_binary(name) do
+    case Cache.get(name) do
+      %FeatureFlag{enabled: true} -> true
+      _ -> false
+    end
+  end
+
+  @doc """
+  Checks if a feature flag is enabled for a specific actor.
+
+  When the flag is enabled and has rules, checks them in order:
+
+  1. If the actor's ID is in the `actor_ids` list, returns `true`
+  2. If a `percentage` rule exists, determines eligibility based on a hash
+     of the flag name and actor ID for consistent results
+  3. If no rules match but the flag is enabled, returns `true`
+
+  Returns `false` if the flag doesn't exist or is disabled.
+
+  ## Examples
+
+      iex> FeatureFlags.enabled_for?("beta_feature", user.id)
+      true
+
+      iex> FeatureFlags.enabled_for?("beta_feature", other_user.id)
+      false
+  """
+  def enabled_for?(name, actor_id) when is_binary(name) and is_integer(actor_id) do
+    case Cache.get(name) do
+      %FeatureFlag{enabled: true, rules: rules} when map_size(rules) > 0 ->
+        check_rules(name, actor_id, rules)
+
+      %FeatureFlag{enabled: true} ->
+        true
+
+      _ ->
+        false
+    end
+  end
+
+  defp check_rules(name, actor_id, rules) do
+    cond do
+      actor_id in (Map.get(rules, "actor_ids") || []) ->
+        true
+
+      percentage = Map.get(rules, "percentage") ->
+        hash = :erlang.phash2({name, actor_id}, 100)
+        hash < percentage
+
+      true ->
+        true
+    end
+  end
+
+  # ============================================================================
+  # Flag Management
+  # ============================================================================
+
+  @doc """
+  Lists all feature flags, ordered by name.
+
+  ## Examples
+
+      iex> FeatureFlags.list_flags()
+      [%FeatureFlag{}, ...]
+  """
+  def list_flags do
+    from(f in FeatureFlag, order_by: f.name)
+    |> Repo.all()
+  end
+
+  @doc """
+  Gets a feature flag by name.
+
+  Returns `nil` if the flag does not exist.
+
+  ## Examples
+
+      iex> FeatureFlags.get_flag("dark_mode")
+      %FeatureFlag{}
+
+      iex> FeatureFlags.get_flag("nonexistent")
+      nil
+  """
+  def get_flag(name) when is_binary(name) do
+    Repo.get_by(FeatureFlag, name: name)
+  end
+
+  @doc """
+  Gets a feature flag by ID.
+
+  Returns `nil` if the flag does not exist.
+  """
+  def get_flag_by_id(id) do
+    Repo.get(FeatureFlag, id)
+  end
+
+  @doc """
+  Creates a new feature flag.
+
+  ## Examples
+
+      iex> FeatureFlags.create_flag(%{name: "dark_mode", description: "Enable dark mode"})
+      {:ok, %FeatureFlag{}}
+
+      iex> FeatureFlags.create_flag(%{name: ""})
+      {:error, %Ecto.Changeset{}}
+  """
+  def create_flag(attrs) do
+    result =
+      %FeatureFlag{}
+      |> FeatureFlag.changeset(attrs)
+      |> Repo.insert()
+
+    case result do
+      {:ok, _flag} -> Cache.refresh()
+      _ -> :ok
+    end
+
+    result
+  end
+
+  @doc """
+  Updates a feature flag.
+
+  ## Examples
+
+      iex> FeatureFlags.update_flag(flag, %{enabled: true})
+      {:ok, %FeatureFlag{}}
+  """
+  def update_flag(%FeatureFlag{} = flag, attrs) do
+    result =
+      flag
+      |> FeatureFlag.changeset(attrs)
+      |> Repo.update()
+
+    case result do
+      {:ok, _flag} -> Cache.refresh()
+      _ -> :ok
+    end
+
+    result
+  end
+
+  @doc """
+  Deletes a feature flag.
+
+  ## Examples
+
+      iex> FeatureFlags.delete_flag(flag)
+      {:ok, %FeatureFlag{}}
+  """
+  def delete_flag(%FeatureFlag{} = flag) do
+    result = Repo.delete(flag)
+
+    case result do
+      {:ok, _flag} -> Cache.refresh()
+      _ -> :ok
+    end
+
+    result
+  end
+
+  @doc """
+  Enables a feature flag by name.
+
+  ## Examples
+
+      iex> FeatureFlags.enable("dark_mode")
+      {:ok, %FeatureFlag{enabled: true}}
+  """
+  def enable(name) when is_binary(name) do
+    case get_flag(name) do
+      nil -> {:error, :not_found}
+      flag -> update_flag(flag, %{enabled: true})
+    end
+  end
+
+  @doc """
+  Disables a feature flag by name.
+
+  ## Examples
+
+      iex> FeatureFlags.disable("dark_mode")
+      {:ok, %FeatureFlag{enabled: false}}
+  """
+  def disable(name) when is_binary(name) do
+    case get_flag(name) do
+      nil -> {:error, :not_found}
+      flag -> update_flag(flag, %{enabled: false})
+    end
+  end
+
+  @doc """
+  Toggles a feature flag by name.
+
+  ## Examples
+
+      iex> FeatureFlags.toggle("dark_mode")
+      {:ok, %FeatureFlag{}}
+  """
+  def toggle(name) when is_binary(name) do
+    case get_flag(name) do
+      nil -> {:error, :not_found}
+      %FeatureFlag{enabled: enabled} = flag -> update_flag(flag, %{enabled: !enabled})
+    end
+  end
+
+  @doc """
+  Returns an `%Ecto.Changeset{}` for tracking feature flag changes.
+
+  ## Examples
+
+      iex> FeatureFlags.change_flag(flag)
+      %Ecto.Changeset{data: %FeatureFlag{}}
+  """
+  def change_flag(%FeatureFlag{} = flag, attrs \\ %{}) do
+    FeatureFlag.changeset(flag, attrs)
+  end
+end

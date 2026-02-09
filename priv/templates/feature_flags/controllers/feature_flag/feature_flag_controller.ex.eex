@@ -1,0 +1,137 @@
+defmodule <%= @web_module %>.FeatureFlagController do
+  @moduledoc """
+  Controller for managing feature flags.
+
+  Provides an admin interface for creating, updating, toggling, and
+  deleting feature flags.
+  """
+
+  use <%= @web_module %>, :controller
+
+  alias <%= @app_module %>.FeatureFlags
+  alias <%= @app_module %>.FeatureFlags.Schemas.FeatureFlag
+
+  @doc """
+  Lists all feature flags.
+  """
+  def index(conn, _params) do
+    flags = FeatureFlags.list_flags()
+    render(conn, :index, flags: flags)
+  end
+
+  @doc """
+  Renders the new feature flag form.
+  """
+  def new(conn, _params) do
+    changeset = FeatureFlags.change_flag(%FeatureFlag{})
+    render(conn, :form, changeset: changeset, action: ~p"/admin/feature-flags")
+  end
+
+  @doc """
+  Creates a new feature flag.
+  """
+  def create(conn, %{"feature_flag" => flag_params}) do
+    case FeatureFlags.create_flag(flag_params) do
+      {:ok, _flag} ->
+        conn
+        |> put_flash(:info, "Feature flag created.")
+        |> redirect(to: ~p"/admin/feature-flags")
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        render(conn, :form, changeset: changeset, action: ~p"/admin/feature-flags")
+    end
+  end
+
+  @doc """
+  Renders the edit feature flag form.
+  """
+  def edit(conn, %{"id" => id}) do
+    flag = FeatureFlags.get_flag_by_id(id)
+
+    case flag do
+      nil ->
+        conn
+        |> put_flash(:error, "Feature flag not found.")
+        |> redirect(to: ~p"/admin/feature-flags")
+
+      flag ->
+        changeset = FeatureFlags.change_flag(flag)
+        render(conn, :form, changeset: changeset, action: ~p"/admin/feature-flags/#{flag}")
+    end
+  end
+
+  @doc """
+  Updates a feature flag.
+  """
+  def update(conn, %{"id" => id, "feature_flag" => flag_params}) do
+    flag = FeatureFlags.get_flag_by_id(id)
+
+    case flag do
+      nil ->
+        conn
+        |> put_flash(:error, "Feature flag not found.")
+        |> redirect(to: ~p"/admin/feature-flags")
+
+      flag ->
+        case FeatureFlags.update_flag(flag, flag_params) do
+          {:ok, _flag} ->
+            conn
+            |> put_flash(:info, "Feature flag updated.")
+            |> redirect(to: ~p"/admin/feature-flags")
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            render(conn, :form, changeset: changeset, action: ~p"/admin/feature-flags/#{flag}")
+        end
+    end
+  end
+
+  @doc """
+  Toggles a feature flag's enabled state.
+  """
+  def toggle(conn, %{"id" => id}) do
+    flag = FeatureFlags.get_flag_by_id(id)
+
+    case flag do
+      nil ->
+        conn
+        |> put_flash(:error, "Feature flag not found.")
+        |> redirect(to: ~p"/admin/feature-flags")
+
+      flag ->
+        case FeatureFlags.toggle(flag.name) do
+          {:ok, updated_flag} ->
+            state = if updated_flag.enabled, do: "enabled", else: "disabled"
+
+            conn
+            |> put_flash(:info, "Feature flag \"#{flag.name}\" #{state}.")
+            |> redirect(to: ~p"/admin/feature-flags")
+
+          {:error, _} ->
+            conn
+            |> put_flash(:error, "Could not toggle feature flag.")
+            |> redirect(to: ~p"/admin/feature-flags")
+        end
+    end
+  end
+
+  @doc """
+  Deletes a feature flag.
+  """
+  def delete(conn, %{"id" => id}) do
+    flag = FeatureFlags.get_flag_by_id(id)
+
+    case flag do
+      nil ->
+        conn
+        |> put_flash(:error, "Feature flag not found.")
+        |> redirect(to: ~p"/admin/feature-flags")
+
+      flag ->
+        {:ok, _} = FeatureFlags.delete_flag(flag)
+
+        conn
+        |> put_flash(:info, "Feature flag \"#{flag.name}\" deleted.")
+        |> redirect(to: ~p"/admin/feature-flags")
+    end
+  end
+end
