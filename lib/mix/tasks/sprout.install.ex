@@ -1642,7 +1642,6 @@ defmodule Mix.Tasks.Sprout.Install do
     |> Igniter.Project.Config.configure("test.exs", app_name, [Oban, :testing], :manual)
   end
 
-<<<<<<< claude/add-feature-flags-pKbgf
   # ============================================================================
   # Feature Flags (--feature_flags)
   # ============================================================================
@@ -1828,7 +1827,7 @@ defmodule Mix.Tasks.Sprout.Install do
     |> Igniter.Project.Config.configure("test.exs", app_name, [feature_flags_module, :cache_refresh_interval],
       {:code, Sourceror.parse_string!(":timer.seconds(1)")})
   end
-=======
+
   defp update_default_policy_for_billing(igniter, assigns) do
     path = "#{assigns[:app_path]}/default_policy.ex"
     content = render_template("billing/default_policy_with_billing.ex.eex", assigns)
@@ -1839,5 +1838,5 @@ defmodule Mix.Tasks.Sprout.Install do
       {:ok, Igniter.Code.Common.parse_to_zipper!(content)}
     end)
   end
->>>>>>> main
+
 end
