@@ -126,6 +126,14 @@ defmodule Mix.Tasks.Sprout.Install do
     |> create_core_components(assigns)
     |> create_layouts(assigns)
     |> create_root_layout(assigns)
+    # Install announcement banners
+    |> create_announcements_context(assigns)
+    |> create_banner_schema(assigns)
+    |> create_banner_component(assigns)
+    |> create_fetch_banners_plug(assigns)
+    |> create_announcements_migration(assigns)
+    |> create_announcements_tests(assigns)
+    |> update_router_for_banners(assigns)
     # Install home controller (replaces default PageController)
     |> create_home_controller(assigns)
     |> update_home_route(assigns)
@@ -286,6 +294,7 @@ defmodule Mix.Tasks.Sprout.Install do
     |> Igniter.Project.Module.find_and_update_module!(web_module, fn zipper ->
       zipper = add_import_to_controller(zipper, assigns[:web_module])
       zipper = add_import_to_html(zipper, assigns[:web_module])
+      zipper = add_banner_import_to_html(zipper, assigns[:web_module])
       {:ok, zipper}
     end)
   end
@@ -312,6 +321,22 @@ defmodule Mix.Tasks.Sprout.Install do
     case Igniter.Code.Function.move_to_def(zipper, :html, 0) do
       {:ok, def_zipper} ->
         if already_has_import?(def_zipper, "Turbo") do
+          Sourceror.Zipper.topmost(zipper)
+        else
+          add_import_after_core_components(def_zipper, import_code)
+        end
+
+      :error ->
+        zipper
+    end
+  end
+
+  defp add_banner_import_to_html(zipper, web_module) do
+    import_code = "import #{web_module}.Components.AnnouncementBanner"
+
+    case Igniter.Code.Function.move_to_def(zipper, :html, 0) do
+      {:ok, def_zipper} ->
+        if already_has_import?(def_zipper, "AnnouncementBanner") do
           Sourceror.Zipper.topmost(zipper)
         else
           add_import_after_core_components(def_zipper, import_code)
@@ -546,6 +571,75 @@ defmodule Mix.Tasks.Sprout.Install do
     igniter
     |> Igniter.rm("assets/vendor/daisyui.js")
     |> Igniter.rm("assets/vendor/daisyui-theme.js")
+  end
+
+  # ============================================================================
+  # Announcement Banners
+  # ============================================================================
+
+  defp create_announcements_context(igniter, assigns) do
+    path = "#{assigns[:app_path]}/announcements.ex"
+    content = render_template("announcements/announcements.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_banner_schema(igniter, assigns) do
+    path = "#{assigns[:app_path]}/announcements/banner.ex"
+    content = render_template("announcements/schemas/banner.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_banner_component(igniter, assigns) do
+    path = "#{assigns[:web_path]}/components/announcement_banner.ex"
+    content = render_template("announcements/banner_component.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_fetch_banners_plug(igniter, assigns) do
+    path = "#{assigns[:web_path]}/plugs/fetch_banners.ex"
+    content = render_template("announcements/plugs/fetch_banners.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_announcements_migration(igniter, assigns) do
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
+    path = "priv/repo/migrations/#{timestamp}_create_announcements_table.exs"
+    content = render_template("announcements/migrations/create_announcements_table.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_announcements_tests(igniter, assigns) do
+    app_name = assigns[:app_name]
+
+    # Create fixtures
+    fixtures_content = render_template("announcements/test/support/fixtures/announcements_fixtures.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "test/support/announcements_fixtures.ex", fixtures_content, on_exists: :skip)
+
+    # Create announcements test
+    test_content = render_template("announcements/test/announcements_test.exs.eex", assigns)
+    Igniter.create_new_file(igniter, "test/#{app_name}/announcements_test.exs", test_content, on_exists: :skip)
+  end
+
+  defp update_router_for_banners(igniter, assigns) do
+    web_module = assigns[:web_module]
+
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
+      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+
+      if String.contains?(node_string, "FetchBanners") do
+        {:ok, zipper}
+      else
+        # Add plug FetchBanners to the :browser pipeline
+        updated_string = String.replace(
+          node_string,
+          ~r/(pipeline :browser do\s*.+?)(\n\s*end)/s,
+          "\\1\n    plug #{web_module}.Plugs.FetchBanners\\2",
+          global: false
+        )
+        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+      end
+    end)
   end
 
   # ============================================================================
