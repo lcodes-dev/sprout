@@ -1,0 +1,98 @@
+defmodule <%= @web_module %>.Authorize do
+  @moduledoc """
+  Authorization controller plug and helpers.
+
+  Automatically injected into every controller via `controller/0` in the web module.
+  Only enforces authorization on routes that went through `require_authenticated_user`
+  (detected by the `:require_authorization` flag in `conn.private`).
+
+  ## In controllers
+
+  Declare a policy override (optional — falls back to default policy):
+
+      policy MyApp.Blog.PostPolicy
+
+  Call resource-level authorization inside actions:
+
+      def edit(conn, %{"id" => id}) do
+        post = Blog.get_post!(id)
+        authorize!(conn, %{post: post})
+        render(conn, :edit, post: post)
+      end
+  """
+
+  import Plug.Conn
+  import Phoenix.Controller
+
+  # ── Plug callbacks ─────────────────────────────────
+
+  def init(opts), do: opts
+
+  def call(conn, _opts) do
+    # Only enforce on authenticated routes (flag set by require_authenticated_user)
+    if conn.private[:require_authorization] do
+      controller = conn.private.phoenix_controller
+      action = action_name(conn)
+      scope = conn.assigns[:current_scope]
+
+      {policy, policy_action} = <%= @app_module %>.Policy.resolve({controller, action})
+
+      case policy.authorize(policy_action, scope, %{}) do
+        :ok ->
+          conn
+
+        {:error, :unauthorized} ->
+          conn
+          |> put_flash(:error, "You are not authorized to access this page.")
+          |> redirect(to: "/")
+          |> halt()
+      end
+    else
+      conn
+    end
+  end
+
+  # ── Controller macros/functions ────────────────────
+
+  @doc """
+  Declares which policy module this controller uses.
+  If not declared, the default policy receives `{Controller, :action}` tuples.
+
+      policy MyApp.Blog.PostPolicy
+  """
+  defmacro policy(module) do
+    quote do
+      def __policy__, do: unquote(module)
+    end
+  end
+
+  @doc """
+  Re-checks authorization with resource context. Call inside actions that
+  need ownership or resource-level checks.
+
+  Raises `<%= @web_module %>.NotAuthorizedError` on failure.
+  The error is caught by the overridden `action/2` in the web module
+  and converted to a redirect with flash (Turbo-compatible).
+
+      def edit(conn, %{"id" => id}) do
+        post = Blog.get_post!(id)
+        authorize!(conn, %{post: post})
+        render(conn, :edit, post: post)
+      end
+  """
+  def authorize!(conn, context \\ %{}) do
+    controller = conn.private.phoenix_controller
+    action = action_name(conn)
+    scope = conn.assigns[:current_scope]
+
+    {policy, policy_action} = <%= @app_module %>.Policy.resolve({controller, action})
+
+    case policy.authorize(policy_action, scope, context) do
+      :ok ->
+        conn
+
+      {:error, :unauthorized} ->
+        raise <%= @web_module %>.NotAuthorizedError
+    end
+  end
+end

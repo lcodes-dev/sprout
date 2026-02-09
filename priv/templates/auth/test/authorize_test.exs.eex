@@ -1,0 +1,107 @@
+defmodule <%= @web_module %>.AuthorizeTest do
+  use <%= @web_module %>.ConnCase
+
+  import <%= @app_module %>.AccountsFixtures
+
+  describe "authorize plug - authenticated routes" do
+    setup :register_and_log_in_user
+
+    test "allows access when policy permits the action", %{conn: conn} do
+      conn = get(conn, ~p"/dashboard")
+      assert html_response(conn, 200) =~ "Dashboard"
+    end
+
+    test "allows access to user settings", %{conn: conn} do
+      conn = get(conn, ~p"/users/settings")
+      assert html_response(conn, 200)
+    end
+  end
+
+  describe "authorize plug - public routes" do
+    test "home page is accessible without authentication", %{conn: conn} do
+      conn = get(conn, ~p"/")
+      assert html_response(conn, 200)
+    end
+
+    test "login page is accessible without authentication", %{conn: conn} do
+      conn = get(conn, ~p"/users/log-in")
+      assert html_response(conn, 200)
+    end
+
+    test "public routes skip authorization for authenticated users", %{conn: conn} do
+      user = user_fixture()
+      conn = log_in_user(conn, user)
+      # Home page should work even though no policy clause for HomeController
+      conn = get(conn, ~p"/")
+      assert html_response(conn, 200)
+    end
+  end
+
+  describe "authorize plug - admin bypass" do
+    setup :register_and_log_in_admin
+
+    test "admin can access all authenticated routes", %{conn: conn} do
+      conn = get(conn, ~p"/dashboard")
+      assert html_response(conn, 200) =~ "Dashboard"
+    end
+  end
+
+  describe "authorize! in controllers" do
+    setup :register_and_log_in_user
+
+    test "authorize! is available in controllers" do
+      # Verify the function is importable (compilation test)
+      assert function_exported?(<%= @web_module %>.Authorize, :authorize!, 1)
+      assert function_exported?(<%= @web_module %>.Authorize, :authorize!, 2)
+    end
+  end
+
+  describe "policy macro in controllers" do
+    test "controllers without policy/1 don't export __policy__" do
+      refute function_exported?(<%= @web_module %>.DashboardController, :__policy__, 0)
+    end
+  end
+
+  describe "can? helper in templates" do
+    setup :register_and_log_in_user
+
+    test "can? is available and works with current_scope", %{user: user} do
+      alias <%= @app_module %>.Policy
+      alias <%= @app_module %>.Accounts.Schemas.Scope
+
+      scope = Scope.for_user(user)
+
+      assert Policy.can?(scope, {<%= @web_module %>.DashboardController, :index})
+      refute Policy.can?(scope, :nonexistent_action)
+    end
+
+    test "can? returns false for nil scope" do
+      refute <%= @app_module %>.Policy.can?(nil, {<%= @web_module %>.DashboardController, :index})
+    end
+  end
+
+  describe "NotAuthorizedError" do
+    test "has correct defaults" do
+      error = %<%= @web_module %>.NotAuthorizedError{}
+      assert error.message == "You are not authorized to perform this action."
+      assert error.plug_status == 403
+    end
+  end
+
+  describe "user role in fixtures" do
+    test "user_fixture creates a user with default role" do
+      user = user_fixture()
+      assert user.role == "user"
+    end
+
+    test "user_fixture accepts a role override" do
+      user = user_fixture(%{role: "moderator"})
+      assert user.role == "moderator"
+    end
+
+    test "admin_fixture creates a user with admin role" do
+      user = admin_fixture()
+      assert user.role == "admin"
+    end
+  end
+end

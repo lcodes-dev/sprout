@@ -1,0 +1,11 @@
+defmodule <%= @web_module %>.NotAuthorizedError do
+  @moduledoc """
+  Raised when `authorize!/2` fails in a controller action.
+
+  Caught by the overridden `action/2` in every controller
+  and converted to a redirect with flash message (Turbo-compatible).
+  """
+
+  defexception message: "You are not authorized to perform this action.",
+               plug_status: 403
+end

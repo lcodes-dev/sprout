@@ -1,0 +1,30 @@
+defmodule <%= @app_module %>.DefaultPolicy do
+  @moduledoc """
+  Default authorization policy. All rules for simple projects live here.
+
+  Actions are identified as `{ControllerModule, :action_name}` tuples.
+  As the app grows, extract per-resource policies and declare them in controllers
+  with `policy MyApp.Blog.PostPolicy`.
+  """
+
+  @behaviour <%= @app_module %>.Policy
+
+  alias <%= @app_module %>.Accounts.Schemas.Scope
+
+  alias <%= @web_module %>.{
+    DashboardController,
+    UserSettingsController
+  }
+
+  # Admin can do anything
+  def authorize(_action, %Scope{user: %{role: "admin"}}, _ctx), do: :ok
+
+  # Dashboard — any authenticated user
+  def authorize({DashboardController, _action}, %Scope{user: %{}}, _ctx), do: :ok
+
+  # User settings — any authenticated user
+  def authorize({UserSettingsController, _action}, %Scope{user: %{}}, _ctx), do: :ok
+
+  # Default deny
+  def authorize(_action, _scope, _ctx), do: {:error, :unauthorized}
+end

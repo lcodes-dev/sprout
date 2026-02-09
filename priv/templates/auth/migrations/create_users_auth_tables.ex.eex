@@ -9,6 +9,7 @@ defmodule <%= @app_module %>.Repo.Migrations.CreateUsersAuthTables do
     create table(:users) do
       add :email, email_type(), null: false
       add :hashed_password, :string, null: false
+      add :role, :string, default: "user", null: false
       add :confirmed_at, :utc_datetime
 
       timestamps(type: :utc_datetime)

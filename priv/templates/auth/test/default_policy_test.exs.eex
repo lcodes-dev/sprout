@@ -1,0 +1,75 @@
+defmodule <%= @app_module %>.DefaultPolicyTest do
+  use <%= @app_module %>.DataCase
+
+  alias <%= @app_module %>.DefaultPolicy
+  alias <%= @app_module %>.Accounts.Schemas.Scope
+
+  alias <%= @web_module %>.{
+    DashboardController,
+    UserSettingsController
+  }
+
+  defmodule FakeController do
+    # A controller not listed in the policy
+  end
+
+  defp user_scope(attrs \\ %{}) do
+    %Scope{user: Map.merge(%{id: 1, role: "user"}, attrs)}
+  end
+
+  defp admin_scope do
+    %Scope{user: %{id: 1, role: "admin"}}
+  end
+
+  describe "admin bypass" do
+    test "admin can do anything" do
+      assert :ok = DefaultPolicy.authorize({DashboardController, :index}, admin_scope(), %{})
+      assert :ok = DefaultPolicy.authorize({FakeController, :unknown}, admin_scope(), %{})
+      assert :ok = DefaultPolicy.authorize(:arbitrary_atom, admin_scope(), %{})
+    end
+  end
+
+  describe "DashboardController" do
+    test "any authenticated user can access" do
+      assert :ok = DefaultPolicy.authorize({DashboardController, :index}, user_scope(), %{})
+    end
+
+    test "any action is allowed" do
+      assert :ok = DefaultPolicy.authorize({DashboardController, :show}, user_scope(), %{})
+    end
+
+    test "denied without a valid scope" do
+      assert {:error, :unauthorized} = DefaultPolicy.authorize({DashboardController, :index}, nil, %{})
+    end
+
+    test "denied with nil user in scope" do
+      assert {:error, :unauthorized} =
+               DefaultPolicy.authorize({DashboardController, :index}, %Scope{user: nil}, %{})
+    end
+  end
+
+  describe "UserSettingsController" do
+    test "any authenticated user can access" do
+      assert :ok = DefaultPolicy.authorize({UserSettingsController, :edit}, user_scope(), %{})
+      assert :ok = DefaultPolicy.authorize({UserSettingsController, :update}, user_scope(), %{})
+      assert :ok = DefaultPolicy.authorize({UserSettingsController, :confirm_email}, user_scope(), %{})
+    end
+  end
+
+  describe "default deny" do
+    test "unknown controller is denied" do
+      assert {:error, :unauthorized} =
+               DefaultPolicy.authorize({FakeController, :index}, user_scope(), %{})
+    end
+
+    test "unknown atom action is denied" do
+      assert {:error, :unauthorized} =
+               DefaultPolicy.authorize(:some_random_action, user_scope(), %{})
+    end
+
+    test "nil scope is denied" do
+      assert {:error, :unauthorized} =
+               DefaultPolicy.authorize({DashboardController, :index}, nil, %{})
+    end
+  end
+end

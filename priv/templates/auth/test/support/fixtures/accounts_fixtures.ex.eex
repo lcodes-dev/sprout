@@ -31,14 +31,29 @@ defmodule <%= @app_module %>.AccountsFixtures do
   end
 
   def user_fixture(attrs \\ %{}) do
+    {role, attrs} = Map.pop(attrs, :role)
     user = unconfirmed_user_fixture(attrs)
-    confirm_user(user)
+    user = confirm_user(user)
+    if role, do: set_user_role(user, role), else: user
+  end
+
+  def admin_fixture(attrs \\ %{}) do
+    user_fixture(Map.put(attrs, :role, "admin"))
   end
 
   defp confirm_user(user) do
     {:ok, user} =
       user
       |> Ecto.Changeset.change(confirmed_at: DateTime.utc_now(:second))
+      |> Repo.update()
+
+    user
+  end
+
+  defp set_user_role(user, role) do
+    {:ok, user} =
+      user
+      |> Ecto.Changeset.change(role: role)
       |> Repo.update()
 
     user
