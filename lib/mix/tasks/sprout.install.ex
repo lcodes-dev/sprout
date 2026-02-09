@@ -138,6 +138,14 @@ defmodule Mix.Tasks.Sprout.Install do
     |> create_core_components(assigns)
     |> create_layouts(assigns)
     |> create_root_layout(assigns)
+    # Install announcement banners
+    |> create_announcements_context(assigns)
+    |> create_banner_schema(assigns)
+    |> create_banner_component(assigns)
+    |> create_fetch_banners_plug(assigns)
+    |> create_announcements_migration(assigns)
+    |> create_announcements_tests(assigns)
+    |> update_router_for_banners(assigns)
     # Install home controller (replaces default PageController)
     |> create_home_controller(assigns)
     |> update_home_route(assigns)
@@ -301,6 +309,7 @@ defmodule Mix.Tasks.Sprout.Install do
     |> Igniter.Project.Module.find_and_update_module!(web_module, fn zipper ->
       zipper = add_import_to_controller(zipper, assigns[:web_module])
       zipper = add_import_to_html(zipper, assigns[:web_module])
+      zipper = add_banner_import_to_html(zipper, assigns[:web_module])
       {:ok, zipper}
     end)
   end
@@ -327,6 +336,22 @@ defmodule Mix.Tasks.Sprout.Install do
     case Igniter.Code.Function.move_to_def(zipper, :html, 0) do
       {:ok, def_zipper} ->
         if already_has_import?(def_zipper, "Turbo") do
+          Sourceror.Zipper.topmost(zipper)
+        else
+          add_import_after_core_components(def_zipper, import_code)
+        end
+
+      :error ->
+        zipper
+    end
+  end
+
+  defp add_banner_import_to_html(zipper, web_module) do
+    import_code = "import #{web_module}.Components.AnnouncementBanner"
+
+    case Igniter.Code.Function.move_to_def(zipper, :html, 0) do
+      {:ok, def_zipper} ->
+        if already_has_import?(def_zipper, "AnnouncementBanner") do
           Sourceror.Zipper.topmost(zipper)
         else
           add_import_after_core_components(def_zipper, import_code)
@@ -564,6 +589,75 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   # ============================================================================
+  # Announcement Banners
+  # ============================================================================
+
+  defp create_announcements_context(igniter, assigns) do
+    path = "#{assigns[:app_path]}/announcements.ex"
+    content = render_template("announcements/announcements.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_banner_schema(igniter, assigns) do
+    path = "#{assigns[:app_path]}/announcements/banner.ex"
+    content = render_template("announcements/schemas/banner.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_banner_component(igniter, assigns) do
+    path = "#{assigns[:web_path]}/components/announcement_banner.ex"
+    content = render_template("announcements/banner_component.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_fetch_banners_plug(igniter, assigns) do
+    path = "#{assigns[:web_path]}/plugs/fetch_banners.ex"
+    content = render_template("announcements/plugs/fetch_banners.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_announcements_migration(igniter, assigns) do
+    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
+    path = "priv/repo/migrations/#{timestamp}_create_announcements_table.exs"
+    content = render_template("announcements/migrations/create_announcements_table.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_announcements_tests(igniter, assigns) do
+    app_name = assigns[:app_name]
+
+    # Create fixtures
+    fixtures_content = render_template("announcements/test/support/fixtures/announcements_fixtures.ex.eex", assigns)
+    igniter = Igniter.create_new_file(igniter, "test/support/announcements_fixtures.ex", fixtures_content, on_exists: :skip)
+
+    # Create announcements test
+    test_content = render_template("announcements/test/announcements_test.exs.eex", assigns)
+    Igniter.create_new_file(igniter, "test/#{app_name}/announcements_test.exs", test_content, on_exists: :skip)
+  end
+
+  defp update_router_for_banners(igniter, assigns) do
+    web_module = assigns[:web_module]
+
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
+      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+
+      if String.contains?(node_string, "FetchBanners") do
+        {:ok, zipper}
+      else
+        # Add plug FetchBanners to the :browser pipeline
+        updated_string = String.replace(
+          node_string,
+          ~r/(pipeline :browser do\s*.+?)(\n\s*end)/s,
+          "\\1\n    plug #{web_module}.Plugs.FetchBanners\\2",
+          global: false
+        )
+        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+      end
+    end)
+  end
+
+  # ============================================================================
   # Optional Examples
   # ============================================================================
 
@@ -690,6 +784,15 @@ defmodule Mix.Tasks.Sprout.Install do
     |> update_router_for_auth(assigns)
     |> add_auth_config(assigns)
     |> copy_small_logo()
+    # Authorization system
+    |> create_policy_module(assigns)
+    |> create_default_policy(assigns)
+    |> create_authorize_module(assigns)
+    |> create_not_authorized_error(assigns)
+    |> create_authorization_tests(assigns)
+    |> update_web_module_for_auth(assigns)
+    |> update_conn_case_for_auth(assigns)
+    |> add_authorization_config(assigns)
   end
 
   defp add_bcrypt_dependency(igniter) do
@@ -954,6 +1057,196 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   # ============================================================================
+  # Authorization (always installed with auth)
+  # ============================================================================
+
+  defp create_policy_module(igniter, assigns) do
+    path = "#{assigns[:app_path]}/policy.ex"
+    content = render_template("auth/policy.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_default_policy(igniter, assigns) do
+    path = "#{assigns[:app_path]}/default_policy.ex"
+    content = render_template("auth/default_policy.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_authorize_module(igniter, assigns) do
+    path = "#{assigns[:web_path]}/authorize.ex"
+    content = render_template("auth/authorize.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_not_authorized_error(igniter, assigns) do
+    path = "#{assigns[:web_path]}/not_authorized_error.ex"
+    content = render_template("auth/not_authorized_error.ex.eex", assigns)
+    Igniter.create_new_file(igniter, path, content, on_exists: :skip)
+  end
+
+  defp create_authorization_tests(igniter, assigns) do
+    app_name = assigns[:app_name]
+
+    tests = [
+      {"auth/test/policy_test.exs.eex", "test/#{app_name}/policy_test.exs"},
+      {"auth/test/default_policy_test.exs.eex", "test/#{app_name}/default_policy_test.exs"},
+      {"auth/test/authorize_test.exs.eex", "test/#{app_name}_web/authorize_test.exs"}
+    ]
+
+    Enum.reduce(tests, igniter, fn {template_name, output_path}, acc ->
+      content = render_template(template_name, assigns)
+      Igniter.create_new_file(acc, output_path, content, on_exists: :skip)
+    end)
+  end
+
+  defp update_web_module_for_auth(igniter, assigns) do
+    web_module = Module.concat([assigns[:web_module]])
+
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(web_module, fn zipper ->
+      zipper = add_authorize_to_controller(zipper, assigns[:web_module])
+      zipper = add_can_to_html_helpers(zipper, assigns[:app_module])
+      {:ok, zipper}
+    end)
+  end
+
+  defp add_authorize_to_controller(zipper, web_module) do
+    case Igniter.Code.Function.move_to_def(zipper, :controller, 0) do
+      {:ok, def_zipper} ->
+        node_string = def_zipper |> Sourceror.Zipper.node() |> Macro.to_string()
+
+        if String.contains?(node_string, "Authorize") do
+          Sourceror.Zipper.topmost(zipper)
+        else
+          # Add authorization imports, plug, and action/2 override after Turbo import
+          authorize_code = """
+          import #{web_module}.Authorize, only: [policy: 1, authorize!: 1, authorize!: 2]
+
+          plug #{web_module}.Authorize
+
+          # Catch NotAuthorizedError and redirect with flash (Turbo-compatible).
+          # Phoenix.Controller only defines action/2 if not already defined,
+          # so this takes precedence.
+          def action(conn, _opts) do
+            apply(__MODULE__, Phoenix.Controller.action_name(conn), [conn, conn.params])
+          rescue
+            e in #{web_module}.NotAuthorizedError ->
+              conn
+              |> Phoenix.Controller.put_flash(:error, e.message)
+              |> Phoenix.Controller.redirect(to: "/")
+          end
+          """
+
+          case find_import_containing(def_zipper, "Turbo") do
+            {:ok, turbo_zipper} ->
+              turbo_zipper
+              |> Igniter.Code.Common.add_code(authorize_code, placement: :after)
+              |> Sourceror.Zipper.topmost()
+
+            :error ->
+              # Fallback: add after Plug.Conn import
+              case find_import_containing(def_zipper, "Plug.Conn") do
+                {:ok, plug_zipper} ->
+                  plug_zipper
+                  |> Igniter.Code.Common.add_code(authorize_code, placement: :after)
+                  |> Sourceror.Zipper.topmost()
+
+                :error ->
+                  Sourceror.Zipper.topmost(zipper)
+              end
+          end
+        end
+
+      :error ->
+        zipper
+    end
+  end
+
+  defp add_can_to_html_helpers(zipper, app_module) do
+    import_code = "import #{app_module}.Policy, only: [can?: 2, can?: 3]"
+
+    case Igniter.Code.Function.move_to_defp(zipper, :html_helpers, 0) do
+      {:ok, def_zipper} ->
+        node_string = def_zipper |> Sourceror.Zipper.node() |> Macro.to_string()
+
+        if String.contains?(node_string, "Policy") do
+          Sourceror.Zipper.topmost(zipper)
+        else
+          case find_import_containing(def_zipper, "Turbo") do
+            {:ok, turbo_zipper} ->
+              turbo_zipper
+              |> Igniter.Code.Common.add_code(import_code, placement: :after)
+              |> Sourceror.Zipper.topmost()
+
+            :error ->
+              case find_import_containing(def_zipper, "CoreComponents") do
+                {:ok, components_zipper} ->
+                  components_zipper
+                  |> Igniter.Code.Common.add_code(import_code, placement: :after)
+                  |> Sourceror.Zipper.topmost()
+
+                :error ->
+                  Sourceror.Zipper.topmost(zipper)
+              end
+          end
+        end
+
+      :error ->
+        zipper
+    end
+  end
+
+  defp update_conn_case_for_auth(igniter, assigns) do
+    web_module = assigns[:web_module]
+    app_module = assigns[:app_module]
+    conn_case_module = Module.concat([web_module, "ConnCase"])
+
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(conn_case_module, fn zipper ->
+      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+
+      if String.contains?(node_string, "register_and_log_in_admin") do
+        {:ok, zipper}
+      else
+        admin_helper = """
+        @doc \"\"\"
+        Setup helper that registers and logs in an admin user.
+
+            setup :register_and_log_in_admin
+        \"\"\"
+        def register_and_log_in_admin(%{conn: conn}) do
+          user = #{app_module}.AccountsFixtures.admin_fixture()
+          %{conn: log_in_user(conn, user), user: user}
+        end
+        """
+
+        # Add after register_and_log_in_user
+        updated_string =
+          if String.contains?(node_string, "register_and_log_in_user") do
+            # Find the end of register_and_log_in_user function and add after it
+            String.replace(
+              node_string,
+              ~r/(def register_and_log_in_user\(%\{conn: conn\}\) do\s*.*?%\{conn: log_in_user\(conn, user\), user: user\}\s*end)/s,
+              "\\1\n\n  #{String.trim(admin_helper)}"
+            )
+          else
+            node_string
+          end
+
+        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+      end
+    end)
+  end
+
+  defp add_authorization_config(igniter, assigns) do
+    app_name = String.to_atom(assigns[:app_name])
+    default_policy = Module.concat([assigns[:app_module], "DefaultPolicy"])
+
+    Igniter.Project.Config.configure(igniter, "config.exs", app_name, [:default_policy],
+      {:code, Sourceror.parse_string!("#{default_policy}")})
+  end
+
+  # ============================================================================
   # Payments (--payments)
   # ============================================================================
 
@@ -979,6 +1272,7 @@ defmodule Mix.Tasks.Sprout.Install do
     |> update_endpoint_for_billing(assigns)
     |> add_payments_config(assigns)
     |> add_oban_config(assigns)
+    |> update_default_policy_for_billing(assigns)
   end
 
   defp add_req_dependency(igniter) do
@@ -1348,6 +1642,7 @@ defmodule Mix.Tasks.Sprout.Install do
     |> Igniter.Project.Config.configure("test.exs", app_name, [Oban, :testing], :manual)
   end
 
+<<<<<<< claude/add-feature-flags-pKbgf
   # ============================================================================
   # Feature Flags (--feature_flags)
   # ============================================================================
@@ -1533,4 +1828,16 @@ defmodule Mix.Tasks.Sprout.Install do
     |> Igniter.Project.Config.configure("test.exs", app_name, [feature_flags_module, :cache_refresh_interval],
       {:code, Sourceror.parse_string!(":timer.seconds(1)")})
   end
+=======
+  defp update_default_policy_for_billing(igniter, assigns) do
+    path = "#{assigns[:app_path]}/default_policy.ex"
+    content = render_template("billing/default_policy_with_billing.ex.eex", assigns)
+
+    igniter
+    |> Igniter.include_or_create_file(path, content)
+    |> Igniter.update_elixir_file(path, fn _zipper ->
+      {:ok, Igniter.Code.Common.parse_to_zipper!(content)}
+    end)
+  end
+>>>>>>> main
 end

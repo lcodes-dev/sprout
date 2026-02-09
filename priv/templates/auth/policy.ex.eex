@@ -1,0 +1,59 @@
+defmodule <%= @app_module %>.Policy do
+  @moduledoc """
+  Authorization behaviour. Implement `authorize/3` in policy modules.
+
+  Actions can be:
+  - `{ControllerModule, :action}` tuples (used by the default policy)
+  - Plain atoms like `:index`, `:edit` (used by controller-specific policies)
+  - Arbitrary atoms like `:manage_billing` (for manual checks)
+
+  ## Usage in templates
+
+      <%%= if can?(@current_scope, {PostController, :edit}, %{post: @post}) do %>
+        <a href={~p"/posts/\#{@post}/edit"}>Edit</a>
+      <%% end %>
+
+  ## Usage in controllers
+
+      authorize!(conn, %{post: post})
+  """
+
+  @type action :: {module(), atom()} | atom()
+
+  @callback authorize(action(), scope :: map() | nil, context :: map()) ::
+              :ok | {:error, :unauthorized}
+
+  @default_policy Application.compile_env(
+                    :<%= @app_name %>,
+                    :default_policy,
+                    <%= @app_module %>.DefaultPolicy
+                  )
+
+  @doc "Boolean check for templates and general use."
+  def can?(scope, action, context \\ %{})
+  def can?(nil, _action, _context), do: false
+
+  def can?(scope, action, context) do
+    {policy, policy_action} = resolve(action)
+    policy.authorize(policy_action, scope, context) == :ok
+  end
+
+  @doc """
+  Resolves which policy module to use and how to pass the action.
+
+  - `{Controller, :action}` with `__policy__/0` → uses controller's policy with just `:action`
+  - `{Controller, :action}` without `__policy__/0` → uses default policy with full tuple
+  - Plain atom → always goes to default policy
+  """
+  def resolve({controller, action}) do
+    if function_exported?(controller, :__policy__, 0) do
+      {controller.__policy__(), action}
+    else
+      {@default_policy, {controller, action}}
+    end
+  end
+
+  def resolve(action) when is_atom(action) do
+    {@default_policy, action}
+  end
+end

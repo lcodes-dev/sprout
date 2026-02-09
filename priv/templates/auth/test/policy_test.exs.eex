@@ -1,0 +1,68 @@
+defmodule <%= @app_module %>.PolicyTest do
+  use <%= @app_module %>.DataCase
+
+  alias <%= @app_module %>.Policy
+  alias <%= @app_module %>.Accounts.Schemas.Scope
+
+  defmodule AllowAllPolicy do
+    @behaviour <%= @app_module %>.Policy
+    def authorize(_action, _scope, _ctx), do: :ok
+  end
+
+  defmodule DenyAllPolicy do
+    @behaviour <%= @app_module %>.Policy
+    def authorize(_action, _scope, _ctx), do: {:error, :unauthorized}
+  end
+
+  defmodule ControllerWithPolicy do
+    def __policy__, do: <%= @app_module %>.PolicyTest.AllowAllPolicy
+  end
+
+  defmodule ControllerWithoutPolicy do
+    # No __policy__/0 defined
+  end
+
+  describe "can?/2" do
+    test "returns false for nil scope" do
+      refute Policy.can?(nil, :any_action)
+    end
+
+    test "delegates to default policy for atom actions" do
+      scope = %Scope{user: %{id: 1, role: "user"}}
+      # Default policy denies unknown atoms
+      refute Policy.can?(scope, :nonexistent_action)
+    end
+  end
+
+  describe "can?/3" do
+    test "returns false for nil scope" do
+      refute Policy.can?(nil, :any_action, %{some: "context"})
+    end
+
+    test "passes context to the policy" do
+      scope = %Scope{user: %{id: 1, role: "admin"}}
+      # Admin is allowed by default policy
+      assert Policy.can?(scope, :anything, %{})
+    end
+  end
+
+  describe "resolve/1" do
+    test "uses controller's policy when __policy__/0 is defined" do
+      {policy, action} = Policy.resolve({ControllerWithPolicy, :index})
+      assert policy == AllowAllPolicy
+      assert action == :index
+    end
+
+    test "uses default policy with full tuple when controller has no __policy__" do
+      {policy, action} = Policy.resolve({ControllerWithoutPolicy, :index})
+      assert policy == <%= @app_module %>.DefaultPolicy
+      assert action == {ControllerWithoutPolicy, :index}
+    end
+
+    test "uses default policy for plain atom actions" do
+      {policy, action} = Policy.resolve(:manage_billing)
+      assert policy == <%= @app_module %>.DefaultPolicy
+      assert action == :manage_billing
+    end
+  end
+end

@@ -1,0 +1,25 @@
+defmodule <%= @app_module %>.AnnouncementsFixtures do
+  @moduledoc """
+  This module defines test helpers for creating
+  entities via the `<%= @app_module %>.Announcements` context.
+  """
+
+  alias <%= @app_module %>.Announcements
+
+  def valid_banner_attributes(attrs \\ %{}) do
+    Enum.into(attrs, %{
+      message: "Test announcement #{System.unique_integer([:positive])}",
+      bg_color: "primary",
+      is_active: true
+    })
+  end
+
+  def banner_fixture(attrs \\ %{}) do
+    {:ok, banner} =
+      attrs
+      |> valid_banner_attributes()
+      |> Announcements.create_banner()
+
+    banner
+  end
+end

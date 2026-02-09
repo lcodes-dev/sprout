@@ -203,6 +203,7 @@ defmodule <%= @web_module %>.UserAuth do
   def require_authenticated_user(conn, _opts) do
     if conn.assigns.current_scope && conn.assigns.current_scope.user do
       conn
+      |> put_private(:require_authorization, true)
     else
       conn
       |> put_flash(:error, "You must log in to access this page.")

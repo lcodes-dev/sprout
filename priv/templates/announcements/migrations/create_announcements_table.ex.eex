@@ -1,0 +1,19 @@
+defmodule <%= @app_module %>.Repo.Migrations.CreateAnnouncementsTable do
+  use Ecto.Migration
+
+  def change do
+    create table(:announcements) do
+      add :message, :text, null: false
+      add :link_text, :string
+      add :link_url, :string
+      add :bg_color, :string, default: "primary", null: false
+      add :is_active, :boolean, default: true, null: false
+      add :starts_at, :utc_datetime
+      add :ends_at, :utc_datetime
+
+      timestamps(type: :utc_datetime)
+    end
+
+    create index(:announcements, [:is_active])
+  end
+end
