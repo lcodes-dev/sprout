@@ -261,6 +261,27 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   # ============================================================================
+  # Migration Timestamp Helper
+  # ============================================================================
+
+  # Returns a unique migration timestamp string (YYYYMMDDHHmmSS) that increments
+  # by one second on each call. Uses the process dictionary to track the counter
+  # so all migrations created during a single install get sequential timestamps.
+  defp next_migration_timestamp do
+    case Process.get(:sprout_migration_timestamp) do
+      nil ->
+        ts = DateTime.utc_now()
+        Process.put(:sprout_migration_timestamp, ts)
+        Calendar.strftime(ts, "%Y%m%d%H%M%S")
+
+      prev_ts ->
+        ts = DateTime.add(prev_ts, 1, :second)
+        Process.put(:sprout_migration_timestamp, ts)
+        Calendar.strftime(ts, "%Y%m%d%H%M%S")
+    end
+  end
+
+  # ============================================================================
   # Create Agent Instruction Files
   # ============================================================================
 
@@ -700,7 +721,7 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp create_announcements_migration(igniter, assigns) do
-    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
+    timestamp = next_migration_timestamp()
     path = "priv/repo/migrations/#{timestamp}_create_announcements_table.exs"
 
     content =
@@ -1051,7 +1072,7 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp create_auth_migration(igniter, assigns) do
-    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
+    timestamp = next_migration_timestamp()
     path = "priv/repo/migrations/#{timestamp}_create_users_auth_tables.exs"
     content = render_template("auth/migrations/create_users_auth_tables.ex.eex", assigns)
     Igniter.create_new_file(igniter, path, content, on_exists: :skip)
@@ -1646,10 +1667,7 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp create_billing_migration(igniter, assigns) do
-    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
-    # Add 1 second to ensure it's after the auth migration
-    timestamp = (String.to_integer(timestamp) + 1) |> to_string()
-
+    timestamp = next_migration_timestamp()
     path = "priv/repo/migrations/#{timestamp}_create_billing_tables.exs"
     content = render_template("billing/migrations/create_billing_tables.ex.eex", assigns)
     Igniter.create_new_file(igniter, path, content, on_exists: :skip)
@@ -1815,10 +1833,7 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp create_oban_migration(igniter, assigns) do
-    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
-    # Add 2 seconds to ensure it's after the billing migration
-    timestamp = (String.to_integer(timestamp) + 2) |> to_string()
-
+    timestamp = next_migration_timestamp()
     path = "priv/repo/migrations/#{timestamp}_add_oban.exs"
     content = render_template("billing/migrations/add_oban.ex.eex", assigns)
     Igniter.create_new_file(igniter, path, content, on_exists: :skip)
@@ -2073,10 +2088,7 @@ defmodule Mix.Tasks.Sprout.Install do
   end
 
   defp create_feature_flags_migration(igniter, assigns) do
-    timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
-    # Add 3 seconds to ensure it's after other migrations
-    timestamp = (String.to_integer(timestamp) + 3) |> to_string()
-
+    timestamp = next_migration_timestamp()
     path = "priv/repo/migrations/#{timestamp}_create_feature_flags.exs"
     content = render_template("feature_flags/migrations/create_feature_flags.ex.eex", assigns)
     Igniter.create_new_file(igniter, path, content, on_exists: :skip)
