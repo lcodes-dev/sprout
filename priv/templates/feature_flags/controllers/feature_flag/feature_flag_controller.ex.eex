@@ -24,7 +24,7 @@ defmodule <%= @web_module %>.FeatureFlagController do
   """
   def new(conn, _params) do
     changeset = FeatureFlags.change_flag(%FeatureFlag{})
-    render(conn, :form, changeset: changeset, action: ~p"/admin/feature-flags")
+    render(conn, :feature_flag_form, form: to_form(changeset), action: ~p"/admin/feature-flags")
   end
 
   @doc """
@@ -38,7 +38,7 @@ defmodule <%= @web_module %>.FeatureFlagController do
         |> redirect(to: ~p"/admin/feature-flags")
 
       {:error, %Ecto.Changeset{} = changeset} ->
-        render(conn, :form, changeset: changeset, action: ~p"/admin/feature-flags")
+        render(conn, :feature_flag_form, form: to_form(changeset), action: ~p"/admin/feature-flags")
     end
   end
 
@@ -56,7 +56,7 @@ defmodule <%= @web_module %>.FeatureFlagController do
 
       flag ->
         changeset = FeatureFlags.change_flag(flag)
-        render(conn, :form, changeset: changeset, action: ~p"/admin/feature-flags/#{flag}")
+        render(conn, :feature_flag_form, form: to_form(changeset), action: ~p"/admin/feature-flags/#{flag}")
     end
   end
 
@@ -80,7 +80,7 @@ defmodule <%= @web_module %>.FeatureFlagController do
             |> redirect(to: ~p"/admin/feature-flags")
 
           {:error, %Ecto.Changeset{} = changeset} ->
-            render(conn, :form, changeset: changeset, action: ~p"/admin/feature-flags/#{flag}")
+            render(conn, :feature_flag_form, form: to_form(changeset), action: ~p"/admin/feature-flags/#{flag}")
         end
     end
   end

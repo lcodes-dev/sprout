@@ -1986,7 +1986,7 @@ defmodule Mix.Tasks.Sprout.Install do
       File.read!(template_path("feature_flags/controllers/feature_flag/html/index.html.heex"))
 
     form_template =
-      File.read!(template_path("feature_flags/controllers/feature_flag/html/form.html.heex"))
+      File.read!(template_path("feature_flags/controllers/feature_flag/html/feature_flag_form.html.heex"))
 
     igniter
     |> Igniter.create_new_file(
@@ -2005,7 +2005,7 @@ defmodule Mix.Tasks.Sprout.Install do
       on_exists: :skip
     )
     |> Igniter.create_new_file(
-      "#{web_path}/controllers/feature_flag/html/form.html.heex",
+      "#{web_path}/controllers/feature_flag/html/feature_flag_form.html.heex",
       form_template,
       on_exists: :skip
     )

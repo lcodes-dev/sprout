@@ -18,30 +18,30 @@
     </div>
 
     <h1 class="text-2xl font-bold mb-8">
-      {if @changeset.data.id, do: "Edit Feature Flag", else: "New Feature Flag"}
+      {if @form.source.data.id, do: "Edit Feature Flag", else: "New Feature Flag"}
     </h1>
 
-    <.simple_form :let={f} for={@changeset} action={@action}>
-      <.error :if={@changeset.action}>
-        Oops, something went wrong! Please check the errors below.
-      </.error>
+    <.form for={@form} id="feature-flag-form" action={@action} class="space-y-4">
+      <%= if @form.source.action do %>
+        <div class="alert-destructive">
+          Oops, something went wrong! Please check the errors below.
+        </div>
+      <% end %>
 
-      <.input field={f[:name]} type="text" label="Name" placeholder="my_feature" />
+      <.input field={@form[:name]} type="text" label="Name" placeholder="my_feature" />
 
       <.input
-        field={f[:description]}
+        field={@form[:description]}
         type="textarea"
         label="Description"
         placeholder="Describe what this feature flag controls..."
       />
 
-      <.input field={f[:enabled]} type="checkbox" label="Enabled" />
+      <.input field={@form[:enabled]} type="checkbox" label="Enabled" />
 
-      <:actions>
-        <.button type="submit">
-          {if @changeset.data.id, do: "Update Flag", else: "Create Flag"}
-        </.button>
-      </:actions>
-    </.simple_form>
+      <.button type="submit">
+        {if @form.source.data.id, do: "Update Flag", else: "Create Flag"}
+      </.button>
+    </.form>
   </div>
 </Layouts.dashboard>
