@@ -396,13 +396,13 @@ defmodule Mix.Tasks.Sprout.Install do
     zipper
     |> Sourceror.Zipper.topmost()
     |> Sourceror.Zipper.node()
-    |> Macro.to_string()
+    |> Sourceror.to_string()
     |> String.contains?("import")
     |> Kernel.and(
       zipper
       |> Sourceror.Zipper.topmost()
       |> Sourceror.Zipper.node()
-      |> Macro.to_string()
+      |> Sourceror.to_string()
       |> String.contains?(module_part)
     )
   end
@@ -457,7 +457,7 @@ defmodule Mix.Tasks.Sprout.Install do
   defp find_import_containing(zipper, search_string) do
     Igniter.Code.Common.move_to(zipper, fn z ->
       node = Sourceror.Zipper.node(z)
-      node_string = Macro.to_string(node)
+      node_string = Sourceror.to_string(node)
 
       (Igniter.Code.Function.function_call?(z, :import, 1) or
          Igniter.Code.Function.function_call?(z, :import, 2)) and
@@ -483,7 +483,7 @@ defmodule Mix.Tasks.Sprout.Install do
     |> Igniter.Project.Module.find_and_update_module!(endpoint_module, fn zipper ->
       # Check if turbo-socket already exists
       node_string =
-        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
       if String.contains?(node_string, "turbo-socket") do
         {:ok, zipper}
@@ -588,7 +588,7 @@ defmodule Mix.Tasks.Sprout.Install do
       Module.concat([web_module, "Router"]),
       fn zipper ->
         node_string =
-          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
         cond do
           String.contains?(node_string, "HomeController") ->
@@ -706,7 +706,7 @@ defmodule Mix.Tasks.Sprout.Install do
       Module.concat([web_module, "Router"]),
       fn zipper ->
         node_string =
-          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
         if String.contains?(node_string, "FetchBanners") do
           {:ok, zipper}
@@ -807,7 +807,7 @@ defmodule Mix.Tasks.Sprout.Install do
       Module.concat([web_module, "Router"]),
       fn zipper ->
         node_string =
-          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
         if String.contains?(node_string, "TurboExampleController") do
           {:ok, zipper}
@@ -1065,7 +1065,7 @@ defmodule Mix.Tasks.Sprout.Install do
       Module.concat([web_module, "Router"]),
       fn zipper ->
         node_string =
-          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
         if String.contains?(node_string, "UserAuth") do
           {:ok, zipper}
@@ -1264,7 +1264,7 @@ defmodule Mix.Tasks.Sprout.Install do
   defp add_authorize_to_controller(zipper, web_module) do
     case Igniter.Code.Function.move_to_def(zipper, :controller, 0) do
       {:ok, def_zipper} ->
-        node_string = def_zipper |> Sourceror.Zipper.node() |> Macro.to_string()
+        node_string = def_zipper |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
         if String.contains?(node_string, "Authorize") do
           Sourceror.Zipper.topmost(zipper)
@@ -1318,7 +1318,7 @@ defmodule Mix.Tasks.Sprout.Install do
 
     case Igniter.Code.Function.move_to_defp(zipper, :html_helpers, 0) do
       {:ok, def_zipper} ->
-        node_string = def_zipper |> Sourceror.Zipper.node() |> Macro.to_string()
+        node_string = def_zipper |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
         if String.contains?(node_string, "Policy") do
           Sourceror.Zipper.topmost(zipper)
@@ -1355,7 +1355,7 @@ defmodule Mix.Tasks.Sprout.Install do
     igniter
     |> Igniter.Project.Module.find_and_update_module!(conn_case_module, fn zipper ->
       node_string =
-        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
       if String.contains?(node_string, "register_and_log_in_admin") do
         {:ok, zipper}
@@ -1647,7 +1647,7 @@ defmodule Mix.Tasks.Sprout.Install do
       Module.concat([web_module, "Router"]),
       fn zipper ->
         node_string =
-          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
         if String.contains?(node_string, "BillingController") do
           {:ok, zipper}
@@ -1815,7 +1815,7 @@ defmodule Mix.Tasks.Sprout.Install do
     igniter
     |> Igniter.Project.Module.find_and_update_module!(app_module, fn zipper ->
       node_string =
-        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
       if String.contains?(node_string, "Oban") do
         {:ok, zipper}
@@ -1840,7 +1840,7 @@ defmodule Mix.Tasks.Sprout.Install do
     igniter
     |> Igniter.Project.Module.find_and_update_module!(endpoint_module, fn zipper ->
       node_string =
-        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
       if String.contains?(node_string, "CacheRawBody") do
         {:ok, zipper}
@@ -2067,7 +2067,7 @@ defmodule Mix.Tasks.Sprout.Install do
     igniter
     |> Igniter.Project.Module.find_and_update_module!(app_module, fn zipper ->
       node_string =
-        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
       if String.contains?(node_string, "FeatureFlags.Cache") do
         {:ok, zipper}
@@ -2103,7 +2103,7 @@ defmodule Mix.Tasks.Sprout.Install do
       Module.concat([web_module, "Router"]),
       fn zipper ->
         node_string =
-          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
         if String.contains?(node_string, "FeatureFlagController") do
           {:ok, zipper}
