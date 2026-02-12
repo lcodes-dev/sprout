@@ -207,7 +207,7 @@ defmodule Mix.Tasks.Sprout.Install do
   defp add_final_notice(
          igniter,
          include_examples?,
-         include_auth?,
+         _include_auth?,
          include_payments?,
          include_feature_flags?
        ) do
@@ -217,9 +217,8 @@ defmodule Mix.Tasks.Sprout.Install do
 
     Next steps:
     1. Run `mise trust && mise install` to set up the dev environment
-    #{if include_auth?, do: "2. Run `mix ecto.migrate` to create database tables", else: ""}
-    #{if include_auth?, do: "3. Restart your Phoenix server", else: "2. Restart your Phoenix server"}
-    #{if include_examples?, do: "#{if include_auth?, do: "4", else: "3"}. Visit /turbo-example to see Turbo in action", else: ""}
+    2. Restart your Phoenix server
+    #{if include_examples?, do: "3. Visit /turbo-example to see Turbo in action", else: ""}
     #{if include_payments?, do: "\n    For payments setup:\n    - Set PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, and PADDLE_CLIENT_TOKEN environment variables\n    - Configure products in the database\n    - Visit /billing to see the billing dashboard", else: ""}
     #{if include_feature_flags?, do: "\n    For feature flags:\n    - Visit /admin/feature-flags to manage feature flags\n    - Use FeatureFlags.enabled?(\"flag_name\") to check flags in code\n    - Use the RequireFeature plug to gate routes", else: ""}
 
