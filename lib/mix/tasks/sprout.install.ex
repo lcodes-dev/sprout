@@ -10,7 +10,7 @@ defmodule Mix.Tasks.Sprout.Install do
 
   ## Options
 
-  - `--examples` - Include example Turbo controller demonstrating all features
+  - `--examples` - Include example Turbo controller demonstrating all Turbo features
   - `--no-auth` - Skip user authentication (auth is included by default)
   - `--no-payments` - Skip Paddle Billing integration (payments is included by default)
   - `--no-feature-flags` - Skip feature flags system (feature flags is included by default)
@@ -48,6 +48,7 @@ defmodule Mix.Tasks.Sprout.Install do
   After installation, run:
 
   ```bash
+  mise trust && mise install
   cd assets && npm install
   mix ecto.migrate
   ```
@@ -120,6 +121,9 @@ defmodule Mix.Tasks.Sprout.Install do
     # Create agent instruction files
     |> create_agents_md(assigns)
     |> create_claude_md(assigns)
+    # Create dev environment files
+    |> create_mise_toml()
+    |> create_env_file()
     # Create new Elixir files
     |> create_turbo_module(assigns)
     |> create_turbo_socket(assigns)
@@ -161,19 +165,31 @@ defmodule Mix.Tasks.Sprout.Install do
     |> maybe_add_payments(include_payments? and include_auth?, assigns)
     # Optional: Add feature flags
     |> maybe_add_feature_flags(include_feature_flags?, assigns)
-    |> add_final_notice(include_examples?, include_auth?, include_payments?, include_feature_flags?)
+    |> add_final_notice(
+      include_examples?,
+      include_auth?,
+      include_payments?,
+      include_feature_flags?
+    )
   end
 
-  defp add_final_notice(igniter, include_examples?, include_auth?, include_payments?, include_feature_flags?) do
+  defp add_final_notice(
+         igniter,
+         include_examples?,
+         include_auth?,
+         include_payments?,
+         include_feature_flags?
+       ) do
     Igniter.add_notice(igniter, """
 
     ✅ Sprout installed successfully!
 
     Next steps:
-    1. Run `cd assets && npm install` to install JavaScript dependencies
-    #{if include_auth?, do: "2. Run `mix ecto.migrate` to create database tables", else: ""}
-    #{if include_auth?, do: "3. Restart your Phoenix server", else: "2. Restart your Phoenix server"}
-    #{if include_examples?, do: "#{if include_auth?, do: "4", else: "3"}. Visit /turbo-example to see Turbo in action", else: ""}
+    1. Run `mise trust && mise install` to set up the dev environment
+    2. Run `cd assets && npm install` to install JavaScript dependencies
+    #{if include_auth?, do: "3. Run `mix ecto.migrate` to create database tables", else: ""}
+    #{if include_auth?, do: "4. Restart your Phoenix server", else: "3. Restart your Phoenix server"}
+    #{if include_examples?, do: "#{if include_auth?, do: "5", else: "4"}. Visit /turbo-example to see Turbo in action", else: ""}
     #{if include_payments?, do: "\n    For payments setup:\n    - Set PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, and PADDLE_CLIENT_TOKEN environment variables\n    - Configure products in the database\n    - Visit /billing to see the billing dashboard", else: ""}
     #{if include_feature_flags?, do: "\n    For feature flags:\n    - Visit /admin/feature-flags to manage feature flags\n    - Use FeatureFlags.enabled?(\"flag_name\") to check flags in code\n    - Use the RequireFeature plug to gate routes", else: ""}
 
@@ -231,6 +247,20 @@ defmodule Mix.Tasks.Sprout.Install do
     content = read_template("CLAUDE.md")
 
     Igniter.create_new_file(igniter, path, content, on_exists: :overwrite)
+  end
+
+  # ============================================================================
+  # Create Dev Environment Files
+  # ============================================================================
+
+  defp create_mise_toml(igniter) do
+    content = read_template("mise.toml")
+    Igniter.create_new_file(igniter, "mise.toml", content, on_exists: :skip)
+  end
+
+  defp create_env_file(igniter) do
+    content = read_template(".env.example")
+    Igniter.create_new_file(igniter, ".env", content, on_exists: :skip)
   end
 
   # ============================================================================
@@ -387,8 +417,8 @@ defmodule Mix.Tasks.Sprout.Install do
       :error ->
         # If no Plug.Conn import found, try after use
         case Igniter.Code.Common.move_to(zipper, fn z ->
-          Igniter.Code.Function.function_call?(z, :use, 2)
-        end) do
+               Igniter.Code.Function.function_call?(z, :use, 2)
+             end) do
           {:ok, use_zipper} ->
             use_zipper
             |> Igniter.Code.Common.add_code(import_code, placement: :after)
@@ -410,9 +440,9 @@ defmodule Mix.Tasks.Sprout.Install do
       :error ->
         # Fallback: add after any import
         case Igniter.Code.Common.move_to(zipper, fn z ->
-          Igniter.Code.Function.function_call?(z, :import, 1) or
-          Igniter.Code.Function.function_call?(z, :import, 2)
-        end) do
+               Igniter.Code.Function.function_call?(z, :import, 1) or
+                 Igniter.Code.Function.function_call?(z, :import, 2)
+             end) do
           {:ok, import_zipper} ->
             import_zipper
             |> Igniter.Code.Common.add_code(import_code, placement: :after)
@@ -430,8 +460,8 @@ defmodule Mix.Tasks.Sprout.Install do
       node_string = Macro.to_string(node)
 
       (Igniter.Code.Function.function_call?(z, :import, 1) or
-       Igniter.Code.Function.function_call?(z, :import, 2)) and
-      String.contains?(node_string, search_string)
+         Igniter.Code.Function.function_call?(z, :import, 2)) and
+        String.contains?(node_string, search_string)
     end)
   end
 
@@ -452,30 +482,33 @@ defmodule Mix.Tasks.Sprout.Install do
     igniter
     |> Igniter.Project.Module.find_and_update_module!(endpoint_module, fn zipper ->
       # Check if turbo-socket already exists
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+      node_string =
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
       if String.contains?(node_string, "turbo-socket") do
         {:ok, zipper}
       else
         # Find the first socket declaration and add after it
         case Igniter.Code.Common.move_to(zipper, fn z ->
-          Igniter.Code.Function.function_call?(z, :socket, 2) or
-          Igniter.Code.Function.function_call?(z, :socket, 3)
-        end) do
+               Igniter.Code.Function.function_call?(z, :socket, 2) or
+                 Igniter.Code.Function.function_call?(z, :socket, 3)
+             end) do
           {:ok, socket_zipper} ->
-            {:ok, socket_zipper
-            |> Igniter.Code.Common.add_code(socket_code, placement: :after)
-            |> Sourceror.Zipper.topmost()}
+            {:ok,
+             socket_zipper
+             |> Igniter.Code.Common.add_code(socket_code, placement: :after)
+             |> Sourceror.Zipper.topmost()}
 
           :error ->
             # No socket found, add after use statement
             case Igniter.Code.Common.move_to(zipper, fn z ->
-              Igniter.Code.Function.function_call?(z, :use, 2)
-            end) do
+                   Igniter.Code.Function.function_call?(z, :use, 2)
+                 end) do
               {:ok, use_zipper} ->
-                {:ok, use_zipper
-                |> Igniter.Code.Common.add_code(socket_code, placement: :after)
-                |> Sourceror.Zipper.topmost()}
+                {:ok,
+                 use_zipper
+                 |> Igniter.Code.Common.add_code(socket_code, placement: :after)
+                 |> Sourceror.Zipper.topmost()}
 
               :error ->
                 {:ok, zipper}
@@ -532,30 +565,46 @@ defmodule Mix.Tasks.Sprout.Install do
     template_content = File.read!(template_path("controllers/home/html/index.html.heex"))
 
     igniter
-    |> Igniter.create_new_file("#{web_path}/controllers/home/home_controller.ex", controller_content, on_exists: :skip)
-    |> Igniter.create_new_file("#{web_path}/controllers/home/home_html.ex", html_content, on_exists: :skip)
-    |> Igniter.create_new_file("#{web_path}/controllers/home/html/index.html.heex", template_content, on_exists: :skip)
+    |> Igniter.create_new_file(
+      "#{web_path}/controllers/home/home_controller.ex",
+      controller_content,
+      on_exists: :skip
+    )
+    |> Igniter.create_new_file("#{web_path}/controllers/home/home_html.ex", html_content,
+      on_exists: :skip
+    )
+    |> Igniter.create_new_file(
+      "#{web_path}/controllers/home/html/index.html.heex",
+      template_content,
+      on_exists: :skip
+    )
   end
 
   defp update_home_route(igniter, assigns) do
     web_module = assigns[:web_module]
 
     igniter
-    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+    |> Igniter.Project.Module.find_and_update_module!(
+      Module.concat([web_module, "Router"]),
+      fn zipper ->
+        node_string =
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
-      cond do
-        String.contains?(node_string, "HomeController") ->
-          {:ok, zipper}
+        cond do
+          String.contains?(node_string, "HomeController") ->
+            {:ok, zipper}
 
-        String.contains?(node_string, "PageController, :home") ->
-          updated_string = String.replace(node_string, "PageController, :home", "HomeController, :index")
-          {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+          String.contains?(node_string, "PageController, :home") ->
+            updated_string =
+              String.replace(node_string, "PageController, :home", "HomeController, :index")
 
-        true ->
-          {:ok, zipper}
+            {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+
+          true ->
+            {:ok, zipper}
+        end
       end
-    end)
+    )
   end
 
   defp remove_page_controller(igniter, assigns) do
@@ -619,7 +668,10 @@ defmodule Mix.Tasks.Sprout.Install do
   defp create_announcements_migration(igniter, assigns) do
     timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
     path = "priv/repo/migrations/#{timestamp}_create_announcements_table.exs"
-    content = render_template("announcements/migrations/create_announcements_table.ex.eex", assigns)
+
+    content =
+      render_template("announcements/migrations/create_announcements_table.ex.eex", assigns)
+
     Igniter.create_new_file(igniter, path, content, on_exists: :skip)
   end
 
@@ -627,34 +679,51 @@ defmodule Mix.Tasks.Sprout.Install do
     app_name = assigns[:app_name]
 
     # Create fixtures
-    fixtures_content = render_template("announcements/test/support/fixtures/announcements_fixtures.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "test/support/announcements_fixtures.ex", fixtures_content, on_exists: :skip)
+    fixtures_content =
+      render_template(
+        "announcements/test/support/fixtures/announcements_fixtures.ex.eex",
+        assigns
+      )
+
+    igniter =
+      Igniter.create_new_file(igniter, "test/support/announcements_fixtures.ex", fixtures_content,
+        on_exists: :skip
+      )
 
     # Create announcements test
     test_content = render_template("announcements/test/announcements_test.exs.eex", assigns)
-    Igniter.create_new_file(igniter, "test/#{app_name}/announcements_test.exs", test_content, on_exists: :skip)
+
+    Igniter.create_new_file(igniter, "test/#{app_name}/announcements_test.exs", test_content,
+      on_exists: :skip
+    )
   end
 
   defp update_router_for_banners(igniter, assigns) do
     web_module = assigns[:web_module]
 
     igniter
-    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+    |> Igniter.Project.Module.find_and_update_module!(
+      Module.concat([web_module, "Router"]),
+      fn zipper ->
+        node_string =
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
-      if String.contains?(node_string, "FetchBanners") do
-        {:ok, zipper}
-      else
-        # Add plug FetchBanners to the :browser pipeline
-        updated_string = String.replace(
-          node_string,
-          ~r/(pipeline :browser do\s*.+?)(\n\s*end)/s,
-          "\\1\n    plug #{web_module}.Plugs.FetchBanners\\2",
-          global: false
-        )
-        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+        if String.contains?(node_string, "FetchBanners") do
+          {:ok, zipper}
+        else
+          # Add plug FetchBanners to the :browser pipeline
+          updated_string =
+            String.replace(
+              node_string,
+              ~r/(pipeline :browser do\s*.+?)(\n\s*end)/s,
+              "\\1\n    plug #{web_module}.Plugs.FetchBanners\\2",
+              global: false
+            )
+
+          {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+        end
       end
-    end)
+    )
   end
 
   # ============================================================================
@@ -676,7 +745,9 @@ defmodule Mix.Tasks.Sprout.Install do
     path = "#{assigns[:web_path]}/controllers/turbo_example/turbo_example_controller.ex"
 
     if File.exists?(template_path("controllers/turbo_example/turbo_example_controller.ex.eex")) do
-      content = render_template("controllers/turbo_example/turbo_example_controller.ex.eex", assigns)
+      content =
+        render_template("controllers/turbo_example/turbo_example_controller.ex.eex", assigns)
+
       Igniter.create_new_file(igniter, path, content, on_exists: :skip)
     else
       igniter
@@ -732,21 +803,27 @@ defmodule Mix.Tasks.Sprout.Install do
     """
 
     igniter
-    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+    |> Igniter.Project.Module.find_and_update_module!(
+      Module.concat([web_module, "Router"]),
+      fn zipper ->
+        node_string =
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
-      if String.contains?(node_string, "TurboExampleController") do
-        {:ok, zipper}
-      else
-        # Find the first scope "/" block and add routes there
-        updated_string = String.replace(
-          node_string,
-          ~r/(get "\/", HomeController, :index)/,
-          "\\1\n\n    #{String.trim(route_content)}"
-        )
-        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+        if String.contains?(node_string, "TurboExampleController") do
+          {:ok, zipper}
+        else
+          # Find the first scope "/" block and add routes there
+          updated_string =
+            String.replace(
+              node_string,
+              ~r/(get "\/", HomeController, :index)/,
+              "\\1\n\n    #{String.trim(route_content)}"
+            )
+
+          {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+        end
       end
-    end)
+    )
   end
 
   defp create_hotwire_guide(igniter, assigns) do
@@ -868,19 +945,32 @@ defmodule Mix.Tasks.Sprout.Install do
     ]
 
     Enum.reduce(controllers, igniter, fn {controller_name, templates}, acc ->
-      controller_path = "#{web_path}/controllers/#{controller_name}/#{controller_name}_controller.ex"
-      controller_content = render_template("auth/controllers/#{controller_name}/#{controller_name}_controller.ex.eex", assigns)
+      controller_path =
+        "#{web_path}/controllers/#{controller_name}/#{controller_name}_controller.ex"
+
+      controller_content =
+        render_template(
+          "auth/controllers/#{controller_name}/#{controller_name}_controller.ex.eex",
+          assigns
+        )
 
       acc = Igniter.create_new_file(acc, controller_path, controller_content, on_exists: :skip)
 
       # Create HTML module if there are templates
-      acc = if templates != [] do
-        html_path = "#{web_path}/controllers/#{controller_name}/#{controller_name}_html.ex"
-        html_content = render_template("auth/controllers/#{controller_name}/#{controller_name}_html.ex.eex", assigns)
-        Igniter.create_new_file(acc, html_path, html_content, on_exists: :skip)
-      else
-        acc
-      end
+      acc =
+        if templates != [] do
+          html_path = "#{web_path}/controllers/#{controller_name}/#{controller_name}_html.ex"
+
+          html_content =
+            render_template(
+              "auth/controllers/#{controller_name}/#{controller_name}_html.ex.eex",
+              assigns
+            )
+
+          Igniter.create_new_file(acc, html_path, html_content, on_exists: :skip)
+        else
+          acc
+        end
 
       # Create templates
       Enum.reduce(templates, acc, fn template, inner_acc ->
@@ -900,14 +990,30 @@ defmodule Mix.Tasks.Sprout.Install do
   defp create_dashboard_controller(igniter, assigns) do
     web_path = assigns[:web_path]
 
-    controller_content = render_template("auth/controllers/dashboard/dashboard_controller.ex.eex", assigns)
+    controller_content =
+      render_template("auth/controllers/dashboard/dashboard_controller.ex.eex", assigns)
+
     html_content = render_template("auth/controllers/dashboard/dashboard_html.ex.eex", assigns)
-    template_content = File.read!(template_path("auth/controllers/dashboard/html/index.html.heex"))
+
+    template_content =
+      File.read!(template_path("auth/controllers/dashboard/html/index.html.heex"))
 
     igniter
-    |> Igniter.create_new_file("#{web_path}/controllers/dashboard/dashboard_controller.ex", controller_content, on_exists: :skip)
-    |> Igniter.create_new_file("#{web_path}/controllers/dashboard/dashboard_html.ex", html_content, on_exists: :skip)
-    |> Igniter.create_new_file("#{web_path}/controllers/dashboard/html/index.html.heex", template_content, on_exists: :skip)
+    |> Igniter.create_new_file(
+      "#{web_path}/controllers/dashboard/dashboard_controller.ex",
+      controller_content,
+      on_exists: :skip
+    )
+    |> Igniter.create_new_file(
+      "#{web_path}/controllers/dashboard/dashboard_html.ex",
+      html_content,
+      on_exists: :skip
+    )
+    |> Igniter.create_new_file(
+      "#{web_path}/controllers/dashboard/html/index.html.heex",
+      template_content,
+      on_exists: :skip
+    )
   end
 
   defp create_auth_migration(igniter, assigns) do
@@ -921,77 +1027,99 @@ defmodule Mix.Tasks.Sprout.Install do
     app_name = assigns[:app_name]
 
     # Create fixtures
-    fixtures_content = render_template("auth/test/support/fixtures/accounts_fixtures.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "test/support/accounts_fixtures.ex", fixtures_content, on_exists: :skip)
+    fixtures_content =
+      render_template("auth/test/support/fixtures/accounts_fixtures.ex.eex", assigns)
+
+    igniter =
+      Igniter.create_new_file(igniter, "test/support/accounts_fixtures.ex", fixtures_content,
+        on_exists: :skip
+      )
 
     # Create accounts test
     accounts_test_content = render_template("auth/test/accounts_test.exs.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "test/#{app_name}/accounts_test.exs", accounts_test_content, on_exists: :skip)
+
+    igniter =
+      Igniter.create_new_file(
+        igniter,
+        "test/#{app_name}/accounts_test.exs",
+        accounts_test_content,
+        on_exists: :skip
+      )
 
     # Create user_auth test
     user_auth_test_content = render_template("auth/test/user_auth_test.exs.eex", assigns)
-    Igniter.create_new_file(igniter, "test/#{app_name}_web/user_auth_test.exs", user_auth_test_content, on_exists: :skip)
+
+    Igniter.create_new_file(
+      igniter,
+      "test/#{app_name}_web/user_auth_test.exs",
+      user_auth_test_content,
+      on_exists: :skip
+    )
   end
 
   defp update_router_for_auth(igniter, assigns) do
     web_module = assigns[:web_module]
 
     igniter
-    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+    |> Igniter.Project.Module.find_and_update_module!(
+      Module.concat([web_module, "Router"]),
+      fn zipper ->
+        node_string =
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
-      if String.contains?(node_string, "UserAuth") do
-        {:ok, zipper}
-      else
-        # Add import and plugs
-        auth_code = """
-        import #{web_module}.UserAuth
-        """
+        if String.contains?(node_string, "UserAuth") do
+          {:ok, zipper}
+        else
+          # Add import and plugs
+          auth_code = """
+          import #{web_module}.UserAuth
+          """
 
-        routes_code = """
-        # Public auth routes
-        scope "/", #{web_module} do
-          pipe_through [:browser]
+          routes_code = """
+          # Public auth routes
+          scope "/", #{web_module} do
+            pipe_through [:browser]
 
-          get "/users/log-in", UserSessionController, :new
-          post "/users/log-in", UserSessionController, :create
-          delete "/users/log-out", UserSessionController, :destroy
+            get "/users/log-in", UserSessionController, :new
+            post "/users/log-in", UserSessionController, :create
+            delete "/users/log-out", UserSessionController, :destroy
+          end
+
+          # Routes for non-authenticated users
+          scope "/", #{web_module} do
+            pipe_through [:browser, :redirect_if_user_is_authenticated]
+
+            get "/users/register", UserRegistrationController, :new
+            post "/users/register", UserRegistrationController, :create
+            get "/users/forgot-password", UserForgotPasswordController, :new
+            post "/users/forgot-password", UserForgotPasswordController, :create
+            get "/users/reset-password/:token", UserResetPasswordController, :edit
+            put "/users/reset-password/:token", UserResetPasswordController, :update
+            get "/users/confirm/:token", UserConfirmationController, :confirm
+          end
+
+          # Routes for authenticated users
+          scope "/", #{web_module} do
+            pipe_through [:browser, :require_authenticated_user]
+
+            get "/dashboard", DashboardController, :index
+            get "/users/settings", UserSettingsController, :edit
+            put "/users/settings", UserSettingsController, :update
+            get "/users/settings/confirm-email/:token", UserSettingsController, :confirm_email
+          end
+          """
+
+          # Apply all transformations to the router string
+          updated_string =
+            node_string
+            |> maybe_add_fetch_current_scope()
+            |> maybe_add_auth_import(web_module, auth_code)
+            |> maybe_add_auth_routes(routes_code)
+
+          {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
         end
-
-        # Routes for non-authenticated users
-        scope "/", #{web_module} do
-          pipe_through [:browser, :redirect_if_user_is_authenticated]
-
-          get "/users/register", UserRegistrationController, :new
-          post "/users/register", UserRegistrationController, :create
-          get "/users/forgot-password", UserForgotPasswordController, :new
-          post "/users/forgot-password", UserForgotPasswordController, :create
-          get "/users/reset-password/:token", UserResetPasswordController, :edit
-          put "/users/reset-password/:token", UserResetPasswordController, :update
-          get "/users/confirm/:token", UserConfirmationController, :confirm
-        end
-
-        # Routes for authenticated users
-        scope "/", #{web_module} do
-          pipe_through [:browser, :require_authenticated_user]
-
-          get "/dashboard", DashboardController, :index
-          get "/users/settings", UserSettingsController, :edit
-          put "/users/settings", UserSettingsController, :update
-          get "/users/settings/confirm-email/:token", UserSettingsController, :confirm_email
-        end
-        """
-
-        # Apply all transformations to the router string
-        updated_string =
-          node_string
-          |> maybe_add_fetch_current_scope()
-          |> maybe_add_auth_import(web_module, auth_code)
-          |> maybe_add_auth_routes(routes_code)
-
-        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
       end
-    end)
+    )
   end
 
   defp maybe_add_fetch_current_scope(string) do
@@ -1033,16 +1161,36 @@ defmodule Mix.Tasks.Sprout.Install do
     igniter
     # Production defaults in config.exs
     |> Igniter.Project.Config.configure("config.exs", app_name, [:password_min_length], 8)
-    |> Igniter.Project.Config.configure("config.exs", app_name, [:password_validate_complexity], true)
+    |> Igniter.Project.Config.configure(
+      "config.exs",
+      app_name,
+      [:password_validate_complexity],
+      true
+    )
     # Development settings (relaxed)
     |> Igniter.Project.Config.configure("dev.exs", app_name, [:password_min_length], 6)
-    |> Igniter.Project.Config.configure("dev.exs", app_name, [:password_validate_complexity], false)
+    |> Igniter.Project.Config.configure(
+      "dev.exs",
+      app_name,
+      [:password_validate_complexity],
+      false
+    )
     # Test settings (relaxed)
     |> Igniter.Project.Config.configure("test.exs", app_name, [:password_min_length], 6)
-    |> Igniter.Project.Config.configure("test.exs", app_name, [:password_validate_complexity], false)
+    |> Igniter.Project.Config.configure(
+      "test.exs",
+      app_name,
+      [:password_validate_complexity],
+      false
+    )
     # Production settings (strict) - these will override config.exs
     |> Igniter.Project.Config.configure("prod.exs", app_name, [:password_min_length], 8)
-    |> Igniter.Project.Config.configure("prod.exs", app_name, [:password_validate_complexity], true)
+    |> Igniter.Project.Config.configure(
+      "prod.exs",
+      app_name,
+      [:password_validate_complexity],
+      true
+    )
   end
 
   defp copy_small_logo(igniter) do
@@ -1050,7 +1198,10 @@ defmodule Mix.Tasks.Sprout.Install do
 
     if File.exists?(logo_path) do
       content = File.read!(logo_path)
-      Igniter.create_new_file(igniter, "priv/static/images/logo_small.png", content, on_exists: :skip)
+
+      Igniter.create_new_file(igniter, "priv/static/images/logo_small.png", content,
+        on_exists: :skip
+      )
     else
       igniter
     end
@@ -1203,7 +1354,8 @@ defmodule Mix.Tasks.Sprout.Install do
 
     igniter
     |> Igniter.Project.Module.find_and_update_module!(conn_case_module, fn zipper ->
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+      node_string =
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
       if String.contains?(node_string, "register_and_log_in_admin") do
         {:ok, zipper}
@@ -1242,8 +1394,13 @@ defmodule Mix.Tasks.Sprout.Install do
     app_name = String.to_atom(assigns[:app_name])
     default_policy = Module.concat([assigns[:app_module], "DefaultPolicy"])
 
-    Igniter.Project.Config.configure(igniter, "config.exs", app_name, [:default_policy],
-      {:code, Sourceror.parse_string!("#{default_policy}")})
+    Igniter.Project.Config.configure(
+      igniter,
+      "config.exs",
+      app_name,
+      [:default_policy],
+      {:code, Sourceror.parse_string!("#{default_policy}")}
+    )
   end
 
   # ============================================================================
@@ -1284,23 +1441,49 @@ defmodule Mix.Tasks.Sprout.Install do
 
     # Main billing context
     billing_content = render_template("billing/billing.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing.ex", billing_content, on_exists: :skip)
+
+    igniter =
+      Igniter.create_new_file(igniter, "#{app_path}/billing.ex", billing_content,
+        on_exists: :skip
+      )
 
     # Sub-modules
     customers_content = render_template("billing/customers.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing/customers.ex", customers_content, on_exists: :skip)
+
+    igniter =
+      Igniter.create_new_file(igniter, "#{app_path}/billing/customers.ex", customers_content,
+        on_exists: :skip
+      )
 
     subscriptions_content = render_template("billing/subscriptions.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing/subscriptions.ex", subscriptions_content, on_exists: :skip)
+
+    igniter =
+      Igniter.create_new_file(
+        igniter,
+        "#{app_path}/billing/subscriptions.ex",
+        subscriptions_content,
+        on_exists: :skip
+      )
 
     purchases_content = render_template("billing/purchases.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing/purchases.ex", purchases_content, on_exists: :skip)
+
+    igniter =
+      Igniter.create_new_file(igniter, "#{app_path}/billing/purchases.ex", purchases_content,
+        on_exists: :skip
+      )
 
     credits_content = render_template("billing/credits.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "#{app_path}/billing/credits.ex", credits_content, on_exists: :skip)
+
+    igniter =
+      Igniter.create_new_file(igniter, "#{app_path}/billing/credits.ex", credits_content,
+        on_exists: :skip
+      )
 
     billable_content = render_template("billing/billable.ex.eex", assigns)
-    Igniter.create_new_file(igniter, "#{app_path}/billing/billable.ex", billable_content, on_exists: :skip)
+
+    Igniter.create_new_file(igniter, "#{app_path}/billing/billable.ex", billable_content,
+      on_exists: :skip
+    )
   end
 
   defp create_billing_schemas(igniter, assigns) do
@@ -1341,18 +1524,50 @@ defmodule Mix.Tasks.Sprout.Install do
     web_path = assigns[:web_path]
 
     # Billing controller
-    billing_controller = render_template("billing/controllers/billing/billing_controller.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "#{web_path}/controllers/billing/billing_controller.ex", billing_controller, on_exists: :skip)
+    billing_controller =
+      render_template("billing/controllers/billing/billing_controller.ex.eex", assigns)
+
+    igniter =
+      Igniter.create_new_file(
+        igniter,
+        "#{web_path}/controllers/billing/billing_controller.ex",
+        billing_controller,
+        on_exists: :skip
+      )
 
     billing_html = render_template("billing/controllers/billing/billing_html.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "#{web_path}/controllers/billing/billing_html.ex", billing_html, on_exists: :skip)
+
+    igniter =
+      Igniter.create_new_file(
+        igniter,
+        "#{web_path}/controllers/billing/billing_html.ex",
+        billing_html,
+        on_exists: :skip
+      )
 
     billing_template = read_template("billing/controllers/billing/html/index.html.heex")
-    igniter = Igniter.create_new_file(igniter, "#{web_path}/controllers/billing/html/index.html.heex", billing_template, on_exists: :skip)
+
+    igniter =
+      Igniter.create_new_file(
+        igniter,
+        "#{web_path}/controllers/billing/html/index.html.heex",
+        billing_template,
+        on_exists: :skip
+      )
 
     # Paddle webhook controller
-    webhook_controller = render_template("billing/controllers/paddle_webhook/paddle_webhook_controller.ex.eex", assigns)
-    Igniter.create_new_file(igniter, "#{web_path}/controllers/paddle_webhook/paddle_webhook_controller.ex", webhook_controller, on_exists: :skip)
+    webhook_controller =
+      render_template(
+        "billing/controllers/paddle_webhook/paddle_webhook_controller.ex.eex",
+        assigns
+      )
+
+    Igniter.create_new_file(
+      igniter,
+      "#{web_path}/controllers/paddle_webhook/paddle_webhook_controller.ex",
+      webhook_controller,
+      on_exists: :skip
+    )
   end
 
   defp create_billing_plugs(igniter, assigns) do
@@ -1375,7 +1590,7 @@ defmodule Mix.Tasks.Sprout.Install do
   defp create_billing_migration(igniter, assigns) do
     timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
     # Add 1 second to ensure it's after the auth migration
-    timestamp = String.to_integer(timestamp) + 1 |> to_string()
+    timestamp = (String.to_integer(timestamp) + 1) |> to_string()
 
     path = "priv/repo/migrations/#{timestamp}_create_billing_tables.exs"
     content = render_template("billing/migrations/create_billing_tables.ex.eex", assigns)
@@ -1386,16 +1601,28 @@ defmodule Mix.Tasks.Sprout.Install do
     app_name = assigns[:app_name]
 
     # Create fixtures
-    fixtures_content = render_template("billing/test/support/fixtures/billing_fixtures.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "test/support/billing_fixtures.ex", fixtures_content, on_exists: :skip)
+    fixtures_content =
+      render_template("billing/test/support/fixtures/billing_fixtures.ex.eex", assigns)
+
+    igniter =
+      Igniter.create_new_file(igniter, "test/support/billing_fixtures.ex", fixtures_content,
+        on_exists: :skip
+      )
 
     # Create billing test
     billing_test_content = render_template("billing/test/billing_test.exs.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "test/#{app_name}/billing_test.exs", billing_test_content, on_exists: :skip)
+
+    igniter =
+      Igniter.create_new_file(igniter, "test/#{app_name}/billing_test.exs", billing_test_content,
+        on_exists: :skip
+      )
 
     # Create credits test
     credits_test_content = render_template("billing/test/credits_test.exs.eex", assigns)
-    Igniter.create_new_file(igniter, "test/#{app_name}/credits_test.exs", credits_test_content, on_exists: :skip)
+
+    Igniter.create_new_file(igniter, "test/#{app_name}/credits_test.exs", credits_test_content,
+      on_exists: :skip
+    )
   end
 
   defp update_user_schema_for_billing(igniter, assigns) do
@@ -1416,43 +1643,48 @@ defmodule Mix.Tasks.Sprout.Install do
     web_module = assigns[:web_module]
 
     igniter
-    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+    |> Igniter.Project.Module.find_and_update_module!(
+      Module.concat([web_module, "Router"]),
+      fn zipper ->
+        node_string =
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
-      if String.contains?(node_string, "BillingController") do
-        {:ok, zipper}
-      else
-        webhook_routes = """
-        # Paddle Webhook (no auth, raw body for signature verification)
-        scope "/webhooks", #{web_module} do
-          pipe_through [:api]
+        if String.contains?(node_string, "BillingController") do
+          {:ok, zipper}
+        else
+          webhook_routes = """
+          # Paddle Webhook (no auth, raw body for signature verification)
+          scope "/webhooks", #{web_module} do
+            pipe_through [:api]
 
-          post "/paddle", PaddleWebhookController, :webhook
+            post "/paddle", PaddleWebhookController, :webhook
+          end
+          """
+
+          billing_routes = """
+          # Billing routes (require auth)
+          scope "/billing", #{web_module} do
+            pipe_through [:browser, :require_authenticated_user]
+
+            get "/", BillingController, :index
+            get "/portal", BillingController, :portal
+            get "/checkout/:price_id", BillingController, :checkout
+          end
+          """
+
+          # Add routes before the final end of the module
+          # Match the last `end` in the file which closes the module
+          updated_string =
+            String.replace(
+              node_string,
+              ~r/(\n\s*)end\s*$/,
+              "\n\n  #{String.trim(webhook_routes)}\n\n  #{String.trim(billing_routes)}\\1end"
+            )
+
+          {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
         end
-        """
-
-        billing_routes = """
-        # Billing routes (require auth)
-        scope "/billing", #{web_module} do
-          pipe_through [:browser, :require_authenticated_user]
-
-          get "/", BillingController, :index
-          get "/portal", BillingController, :portal
-          get "/checkout/:price_id", BillingController, :checkout
-        end
-        """
-
-        # Add routes before the final end of the module
-        # Match the last `end` in the file which closes the module
-        updated_string = String.replace(
-          node_string,
-          ~r/(\n\s*)end\s*$/,
-          "\n\n  #{String.trim(webhook_routes)}\n\n  #{String.trim(billing_routes)}\\1end"
-        )
-
-        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
       end
-    end)
+    )
   end
 
   defp add_payments_config(igniter, assigns) do
@@ -1463,20 +1695,51 @@ defmodule Mix.Tasks.Sprout.Install do
 
     igniter
     # Base config
-    |> Igniter.Project.Config.configure("config.exs", app_name, [billing_module, :paddle, :environment], :sandbox)
-    |> Igniter.Project.Config.configure("config.exs", app_name, [billing_module, :allow_multiple_subscriptions], false)
+    |> Igniter.Project.Config.configure(
+      "config.exs",
+      app_name,
+      [billing_module, :paddle, :environment],
+      :sandbox
+    )
+    |> Igniter.Project.Config.configure(
+      "config.exs",
+      app_name,
+      [billing_module, :allow_multiple_subscriptions],
+      false
+    )
     # Runtime config (env vars)
-    |> Igniter.Project.Config.configure("runtime.exs", app_name, [billing_module, :paddle, :api_key],
-      {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_API_KEY\")")})
-    |> Igniter.Project.Config.configure("runtime.exs", app_name, [billing_module, :paddle, :webhook_secret],
-      {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_WEBHOOK_SECRET\")")})
-    |> Igniter.Project.Config.configure("runtime.exs", app_name, [billing_module, :paddle, :client_token],
-      {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_CLIENT_TOKEN\")")})
+    |> Igniter.Project.Config.configure(
+      "runtime.exs",
+      app_name,
+      [billing_module, :paddle, :api_key],
+      {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_API_KEY\")")}
+    )
+    |> Igniter.Project.Config.configure(
+      "runtime.exs",
+      app_name,
+      [billing_module, :paddle, :webhook_secret],
+      {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_WEBHOOK_SECRET\")")}
+    )
+    |> Igniter.Project.Config.configure(
+      "runtime.exs",
+      app_name,
+      [billing_module, :paddle, :client_token],
+      {:code, Sourceror.parse_string!("System.get_env(\"PADDLE_CLIENT_TOKEN\")")}
+    )
     # Production uses production environment
-    |> Igniter.Project.Config.configure("prod.exs", app_name, [billing_module, :paddle, :environment], :production)
+    |> Igniter.Project.Config.configure(
+      "prod.exs",
+      app_name,
+      [billing_module, :paddle, :environment],
+      :production
+    )
     # Billable types configuration
-    |> Igniter.Project.Config.configure("config.exs", app_name, [billing_module, :billable_types],
-      [{:user, user_module}])
+    |> Igniter.Project.Config.configure(
+      "config.exs",
+      app_name,
+      [billing_module, :billable_types],
+      [{:user, user_module}]
+    )
   end
 
   # ============================================================================
@@ -1496,7 +1759,7 @@ defmodule Mix.Tasks.Sprout.Install do
   defp create_oban_migration(igniter, assigns) do
     timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
     # Add 2 seconds to ensure it's after the billing migration
-    timestamp = String.to_integer(timestamp) + 2 |> to_string()
+    timestamp = (String.to_integer(timestamp) + 2) |> to_string()
 
     path = "priv/repo/migrations/#{timestamp}_add_oban.exs"
     content = render_template("billing/migrations/add_oban.ex.eex", assigns)
@@ -1509,20 +1772,25 @@ defmodule Mix.Tasks.Sprout.Install do
     # Create billing context tests
     context_tests = [
       {"billing/test/customers_test.exs.eex", "test/#{app_name}/billing/customers_test.exs"},
-      {"billing/test/subscriptions_test.exs.eex", "test/#{app_name}/billing/subscriptions_test.exs"},
+      {"billing/test/subscriptions_test.exs.eex",
+       "test/#{app_name}/billing/subscriptions_test.exs"},
       {"billing/test/purchases_test.exs.eex", "test/#{app_name}/billing/purchases_test.exs"}
     ]
 
     # Create paddle tests
     paddle_tests = [
-      {"billing/test/paddle/signature_test.exs.eex", "test/#{app_name}/billing/paddle/signature_test.exs"},
-      {"billing/test/paddle/webhook_handler_test.exs.eex", "test/#{app_name}/billing/paddle/webhook_handler_test.exs"}
+      {"billing/test/paddle/signature_test.exs.eex",
+       "test/#{app_name}/billing/paddle/signature_test.exs"},
+      {"billing/test/paddle/webhook_handler_test.exs.eex",
+       "test/#{app_name}/billing/paddle/webhook_handler_test.exs"}
     ]
 
     # Create controller tests (placed directly in _web folder, not in controllers/ subdirectory)
     controller_tests = [
-      {"billing/test/controllers/billing_controller_test.exs.eex", "test/#{app_name}_web/billing_controller_test.exs"},
-      {"billing/test/controllers/paddle_webhook_controller_test.exs.eex", "test/#{app_name}_web/paddle_webhook_controller_test.exs"}
+      {"billing/test/controllers/billing_controller_test.exs.eex",
+       "test/#{app_name}_web/billing_controller_test.exs"},
+      {"billing/test/controllers/paddle_webhook_controller_test.exs.eex",
+       "test/#{app_name}_web/paddle_webhook_controller_test.exs"}
     ]
 
     igniter
@@ -1546,17 +1814,20 @@ defmodule Mix.Tasks.Sprout.Install do
 
     igniter
     |> Igniter.Project.Module.find_and_update_module!(app_module, fn zipper ->
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+      node_string =
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
       if String.contains?(node_string, "Oban") do
         {:ok, zipper}
       else
         # Add Oban to children list after the Repo
-        updated_string = String.replace(
-          node_string,
-          ~r/(#{assigns[:app_module]}\.Repo,)/,
-          "\\1\n      #{oban_child},"
-        )
+        updated_string =
+          String.replace(
+            node_string,
+            ~r/(#{assigns[:app_module]}\.Repo,)/,
+            "\\1\n      #{oban_child},"
+          )
+
         {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
       end
     end)
@@ -1568,7 +1839,8 @@ defmodule Mix.Tasks.Sprout.Install do
 
     igniter
     |> Igniter.Project.Module.find_and_update_module!(endpoint_module, fn zipper ->
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+      node_string =
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
       if String.contains?(node_string, "CacheRawBody") do
         {:ok, zipper}
@@ -1579,11 +1851,12 @@ defmodule Mix.Tasks.Sprout.Install do
         # - plug(Plug.Parsers, (with parens)
         # The pattern captures everything up to and including pass: ["*/*"],
         # and inserts body_reader after it
-        updated_string = String.replace(
-          node_string,
-          ~r/(plug\s*\(?\s*Plug\.Parsers,\s*parsers:\s*\[:urlencoded,\s*:multipart,\s*:json\],\s*pass:\s*\["\*\/\*"\],)/s,
-          "\\1\n    body_reader: {#{web_module}.Plugs.CacheRawBody, :read_body, []},"
-        )
+        updated_string =
+          String.replace(
+            node_string,
+            ~r/(plug\s*\(?\s*Plug\.Parsers,\s*parsers:\s*\[:urlencoded,\s*:multipart,\s*:json\],\s*pass:\s*\["\*\/\*"\],)/s,
+            "\\1\n    body_reader: {#{web_module}.Plugs.CacheRawBody, :read_body, []},"
+          )
 
         # If the first pattern didn't match, try an alternative pattern that looks for
         # the json_decoder line and inserts body_reader before it
@@ -1630,14 +1903,25 @@ defmodule Mix.Tasks.Sprout.Install do
 
     igniter
     # config.exs - Oban base config
-    |> Igniter.Project.Config.configure("config.exs", app_name, [Oban, :engine],
-        {:code, Sourceror.parse_string!("Oban.Engines.Lite")})
-    |> Igniter.Project.Config.configure("config.exs", app_name, [Oban, :notifier],
-        {:code, Sourceror.parse_string!("Oban.Notifiers.PG")})
-    |> Igniter.Project.Config.configure("config.exs", app_name, [Oban, :queues],
-        [default: 10])
-    |> Igniter.Project.Config.configure("config.exs", app_name, [Oban, :repo],
-        {:code, Sourceror.parse_string!("#{repo_module}")})
+    |> Igniter.Project.Config.configure(
+      "config.exs",
+      app_name,
+      [Oban, :engine],
+      {:code, Sourceror.parse_string!("Oban.Engines.Lite")}
+    )
+    |> Igniter.Project.Config.configure(
+      "config.exs",
+      app_name,
+      [Oban, :notifier],
+      {:code, Sourceror.parse_string!("Oban.Notifiers.PG")}
+    )
+    |> Igniter.Project.Config.configure("config.exs", app_name, [Oban, :queues], default: 10)
+    |> Igniter.Project.Config.configure(
+      "config.exs",
+      app_name,
+      [Oban, :repo],
+      {:code, Sourceror.parse_string!("#{repo_module}")}
+    )
     # test.exs - Oban testing mode
     |> Igniter.Project.Config.configure("test.exs", app_name, [Oban, :testing], :manual)
   end
@@ -1689,22 +1973,48 @@ defmodule Mix.Tasks.Sprout.Install do
   defp create_feature_flag_controller(igniter, assigns) do
     web_path = assigns[:web_path]
 
-    controller_content = render_template("feature_flags/controllers/feature_flag/feature_flag_controller.ex.eex", assigns)
-    html_content = render_template("feature_flags/controllers/feature_flag/feature_flag_html.ex.eex", assigns)
-    index_template = File.read!(template_path("feature_flags/controllers/feature_flag/html/index.html.heex"))
-    form_template = File.read!(template_path("feature_flags/controllers/feature_flag/html/form.html.heex"))
+    controller_content =
+      render_template(
+        "feature_flags/controllers/feature_flag/feature_flag_controller.ex.eex",
+        assigns
+      )
+
+    html_content =
+      render_template("feature_flags/controllers/feature_flag/feature_flag_html.ex.eex", assigns)
+
+    index_template =
+      File.read!(template_path("feature_flags/controllers/feature_flag/html/index.html.heex"))
+
+    form_template =
+      File.read!(template_path("feature_flags/controllers/feature_flag/html/form.html.heex"))
 
     igniter
-    |> Igniter.create_new_file("#{web_path}/controllers/feature_flag/feature_flag_controller.ex", controller_content, on_exists: :skip)
-    |> Igniter.create_new_file("#{web_path}/controllers/feature_flag/feature_flag_html.ex", html_content, on_exists: :skip)
-    |> Igniter.create_new_file("#{web_path}/controllers/feature_flag/html/index.html.heex", index_template, on_exists: :skip)
-    |> Igniter.create_new_file("#{web_path}/controllers/feature_flag/html/form.html.heex", form_template, on_exists: :skip)
+    |> Igniter.create_new_file(
+      "#{web_path}/controllers/feature_flag/feature_flag_controller.ex",
+      controller_content,
+      on_exists: :skip
+    )
+    |> Igniter.create_new_file(
+      "#{web_path}/controllers/feature_flag/feature_flag_html.ex",
+      html_content,
+      on_exists: :skip
+    )
+    |> Igniter.create_new_file(
+      "#{web_path}/controllers/feature_flag/html/index.html.heex",
+      index_template,
+      on_exists: :skip
+    )
+    |> Igniter.create_new_file(
+      "#{web_path}/controllers/feature_flag/html/form.html.heex",
+      form_template,
+      on_exists: :skip
+    )
   end
 
   defp create_feature_flags_migration(igniter, assigns) do
     timestamp = Calendar.strftime(DateTime.utc_now(), "%Y%m%d%H%M%S")
     # Add 3 seconds to ensure it's after other migrations
-    timestamp = String.to_integer(timestamp) + 3 |> to_string()
+    timestamp = (String.to_integer(timestamp) + 3) |> to_string()
 
     path = "priv/repo/migrations/#{timestamp}_create_feature_flags.exs"
     content = render_template("feature_flags/migrations/create_feature_flags.ex.eex", assigns)
@@ -1715,16 +2025,39 @@ defmodule Mix.Tasks.Sprout.Install do
     app_name = assigns[:app_name]
 
     # Create fixtures
-    fixtures_content = render_template("feature_flags/test/support/fixtures/feature_flags_fixtures.ex.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "test/support/feature_flags_fixtures.ex", fixtures_content, on_exists: :skip)
+    fixtures_content =
+      render_template(
+        "feature_flags/test/support/fixtures/feature_flags_fixtures.ex.eex",
+        assigns
+      )
+
+    igniter =
+      Igniter.create_new_file(igniter, "test/support/feature_flags_fixtures.ex", fixtures_content,
+        on_exists: :skip
+      )
 
     # Create context test
-    context_test_content = render_template("feature_flags/test/feature_flags_test.exs.eex", assigns)
-    igniter = Igniter.create_new_file(igniter, "test/#{app_name}/feature_flags_test.exs", context_test_content, on_exists: :skip)
+    context_test_content =
+      render_template("feature_flags/test/feature_flags_test.exs.eex", assigns)
+
+    igniter =
+      Igniter.create_new_file(
+        igniter,
+        "test/#{app_name}/feature_flags_test.exs",
+        context_test_content,
+        on_exists: :skip
+      )
 
     # Create controller test
-    controller_test_content = render_template("feature_flags/test/feature_flag_controller_test.exs.eex", assigns)
-    Igniter.create_new_file(igniter, "test/#{app_name}_web/feature_flag_controller_test.exs", controller_test_content, on_exists: :skip)
+    controller_test_content =
+      render_template("feature_flags/test/feature_flag_controller_test.exs.eex", assigns)
+
+    Igniter.create_new_file(
+      igniter,
+      "test/#{app_name}_web/feature_flag_controller_test.exs",
+      controller_test_content,
+      on_exists: :skip
+    )
   end
 
   defp update_application_for_feature_flags(igniter, assigns) do
@@ -1733,7 +2066,8 @@ defmodule Mix.Tasks.Sprout.Install do
 
     igniter
     |> Igniter.Project.Module.find_and_update_module!(app_module, fn zipper ->
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+      node_string =
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
       if String.contains?(node_string, "FeatureFlags.Cache") do
         {:ok, zipper}
@@ -1765,56 +2099,61 @@ defmodule Mix.Tasks.Sprout.Install do
     web_module = assigns[:web_module]
 
     igniter
-    |> Igniter.Project.Module.find_and_update_module!(Module.concat([web_module, "Router"]), fn zipper ->
-      node_string = zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
+    |> Igniter.Project.Module.find_and_update_module!(
+      Module.concat([web_module, "Router"]),
+      fn zipper ->
+        node_string =
+          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Macro.to_string()
 
-      if String.contains?(node_string, "FeatureFlagController") do
-        {:ok, zipper}
-      else
-        feature_flags_routes =
-          if String.contains?(node_string, "require_authenticated_user") do
-            # Auth is installed, put feature flags behind auth
-            """
-            # Feature Flags admin (require auth)
-            scope "/admin", #{web_module} do
-              pipe_through [:browser, :require_authenticated_user]
+        if String.contains?(node_string, "FeatureFlagController") do
+          {:ok, zipper}
+        else
+          feature_flags_routes =
+            if String.contains?(node_string, "require_authenticated_user") do
+              # Auth is installed, put feature flags behind auth
+              """
+              # Feature Flags admin (require auth)
+              scope "/admin", #{web_module} do
+                pipe_through [:browser, :require_authenticated_user]
 
-              get "/feature-flags", FeatureFlagController, :index
-              get "/feature-flags/new", FeatureFlagController, :new
-              post "/feature-flags", FeatureFlagController, :create
-              get "/feature-flags/:id/edit", FeatureFlagController, :edit
-              put "/feature-flags/:id", FeatureFlagController, :update
-              put "/feature-flags/:id/toggle", FeatureFlagController, :toggle
-              delete "/feature-flags/:id", FeatureFlagController, :delete
+                get "/feature-flags", FeatureFlagController, :index
+                get "/feature-flags/new", FeatureFlagController, :new
+                post "/feature-flags", FeatureFlagController, :create
+                get "/feature-flags/:id/edit", FeatureFlagController, :edit
+                put "/feature-flags/:id", FeatureFlagController, :update
+                put "/feature-flags/:id/toggle", FeatureFlagController, :toggle
+                delete "/feature-flags/:id", FeatureFlagController, :delete
+              end
+              """
+            else
+              # No auth, just use browser pipeline
+              """
+              # Feature Flags admin
+              scope "/admin", #{web_module} do
+                pipe_through [:browser]
+
+                get "/feature-flags", FeatureFlagController, :index
+                get "/feature-flags/new", FeatureFlagController, :new
+                post "/feature-flags", FeatureFlagController, :create
+                get "/feature-flags/:id/edit", FeatureFlagController, :edit
+                put "/feature-flags/:id", FeatureFlagController, :update
+                put "/feature-flags/:id/toggle", FeatureFlagController, :toggle
+                delete "/feature-flags/:id", FeatureFlagController, :delete
+              end
+              """
             end
-            """
-          else
-            # No auth, just use browser pipeline
-            """
-            # Feature Flags admin
-            scope "/admin", #{web_module} do
-              pipe_through [:browser]
 
-              get "/feature-flags", FeatureFlagController, :index
-              get "/feature-flags/new", FeatureFlagController, :new
-              post "/feature-flags", FeatureFlagController, :create
-              get "/feature-flags/:id/edit", FeatureFlagController, :edit
-              put "/feature-flags/:id", FeatureFlagController, :update
-              put "/feature-flags/:id/toggle", FeatureFlagController, :toggle
-              delete "/feature-flags/:id", FeatureFlagController, :delete
-            end
-            """
-          end
+          updated_string =
+            String.replace(
+              node_string,
+              ~r/(\n\s*)end\s*$/,
+              "\n\n  #{String.trim(feature_flags_routes)}\\1end"
+            )
 
-        updated_string = String.replace(
-          node_string,
-          ~r/(\n\s*)end\s*$/,
-          "\n\n  #{String.trim(feature_flags_routes)}\\1end"
-        )
-
-        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+          {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+        end
       end
-    end)
+    )
   end
 
   defp add_feature_flags_config(igniter, assigns) do
@@ -1822,10 +2161,18 @@ defmodule Mix.Tasks.Sprout.Install do
     feature_flags_module = Module.concat([assigns[:app_module], "FeatureFlags"])
 
     igniter
-    |> Igniter.Project.Config.configure("config.exs", app_name, [feature_flags_module, :cache_refresh_interval],
-      {:code, Sourceror.parse_string!(":timer.minutes(1)")})
-    |> Igniter.Project.Config.configure("test.exs", app_name, [feature_flags_module, :cache_refresh_interval],
-      {:code, Sourceror.parse_string!(":timer.seconds(1)")})
+    |> Igniter.Project.Config.configure(
+      "config.exs",
+      app_name,
+      [feature_flags_module, :cache_refresh_interval],
+      {:code, Sourceror.parse_string!(":timer.minutes(1)")}
+    )
+    |> Igniter.Project.Config.configure(
+      "test.exs",
+      app_name,
+      [feature_flags_module, :cache_refresh_interval],
+      {:code, Sourceror.parse_string!(":timer.seconds(1)")}
+    )
   end
 
   defp update_default_policy_for_billing(igniter, assigns) do
@@ -1838,5 +2185,4 @@ defmodule Mix.Tasks.Sprout.Install do
       {:ok, Igniter.Code.Common.parse_to_zipper!(content)}
     end)
   end
-
 end
