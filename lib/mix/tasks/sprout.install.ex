@@ -98,7 +98,7 @@ defmodule Mix.Tasks.Sprout.Install do
     web_module_name = app_module_name <> "Web"
     web_path = "lib/#{app_name}_web"
     app_path = "lib/#{app_name}"
-    test_path = "test/#{app_name}_test"
+    test_path = "test"
 
     assigns = [
       web_module: web_module_name,
