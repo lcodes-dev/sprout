@@ -167,12 +167,41 @@ defmodule Mix.Tasks.Sprout.Install do
     |> maybe_add_payments(include_payments? and include_auth?, assigns)
     # Optional: Add feature flags
     |> maybe_add_feature_flags(include_feature_flags?, assigns)
+    # Run post-install tasks
+    |> run_post_install_tasks()
     |> add_final_notice(
       include_examples?,
       include_auth?,
       include_payments?,
       include_feature_flags?
     )
+  end
+
+  defp run_post_install_tasks(igniter) do
+    igniter
+    |> Igniter.add_task("deps.get")
+    |> Igniter.add_task("assets.setup")
+    |> Igniter.add_task("ecto.migrate")
+  end
+
+  @impl Mix.Task
+  def run(argv) do
+    result = super(argv)
+
+    # Run npm install in assets directory after all Igniter tasks complete
+    Mix.shell().info("\nInstalling npm dependencies in assets/...")
+
+    case System.cmd("npm", ["install"], cd: "assets", stderr_to_stdout: true) do
+      {output, 0} ->
+        Mix.shell().info(output)
+        Mix.shell().info("npm dependencies installed successfully.")
+
+      {output, _exit_code} ->
+        Mix.shell().error("Failed to install npm dependencies:")
+        Mix.shell().error(output)
+    end
+
+    result
   end
 
   defp add_final_notice(
@@ -188,10 +217,9 @@ defmodule Mix.Tasks.Sprout.Install do
 
     Next steps:
     1. Run `mise trust && mise install` to set up the dev environment
-    2. Run `cd assets && npm install` to install JavaScript dependencies
-    #{if include_auth?, do: "3. Run `mix ecto.migrate` to create database tables", else: ""}
-    #{if include_auth?, do: "4. Restart your Phoenix server", else: "3. Restart your Phoenix server"}
-    #{if include_examples?, do: "#{if include_auth?, do: "5", else: "4"}. Visit /turbo-example to see Turbo in action", else: ""}
+    #{if include_auth?, do: "2. Run `mix ecto.migrate` to create database tables", else: ""}
+    #{if include_auth?, do: "3. Restart your Phoenix server", else: "2. Restart your Phoenix server"}
+    #{if include_examples?, do: "#{if include_auth?, do: "4", else: "3"}. Visit /turbo-example to see Turbo in action", else: ""}
     #{if include_payments?, do: "\n    For payments setup:\n    - Set PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, and PADDLE_CLIENT_TOKEN environment variables\n    - Configure products in the database\n    - Visit /billing to see the billing dashboard", else: ""}
     #{if include_feature_flags?, do: "\n    For feature flags:\n    - Visit /admin/feature-flags to manage feature flags\n    - Use FeatureFlags.enabled?(\"flag_name\") to check flags in code\n    - Use the RequireFeature plug to gate routes", else: ""}
 
@@ -1364,33 +1392,57 @@ defmodule Mix.Tasks.Sprout.Install do
       node_string =
         zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
 
-      if String.contains?(node_string, "register_and_log_in_admin") do
+      if String.contains?(node_string, "register_and_log_in_user") do
         {:ok, zipper}
       else
-        admin_helper = """
-        @doc \"\"\"
-        Setup helper that registers and logs in an admin user.
+        auth_helpers = """
+          @doc \"\"\"
+          Setup helper that registers and logs in a user.
 
-            setup :register_and_log_in_admin
-        \"\"\"
-        def register_and_log_in_admin(%{conn: conn}) do
-          user = #{app_module}.AccountsFixtures.admin_fixture()
-          %{conn: log_in_user(conn, user), user: user}
-        end
+              setup :register_and_log_in_user
+
+          It stores an updated connection and a registered user in the
+          test context.
+          \"\"\"
+          def register_and_log_in_user(%{conn: conn}) do
+            user = #{app_module}.AccountsFixtures.user_fixture()
+            %{conn: log_in_user(conn, user), user: user}
+          end
+
+          @doc \"\"\"
+          Setup helper that registers and logs in an admin.
+
+              setup :register_and_log_in_admin
+
+          It stores an updated connection and a registered admin user in the
+          test context.
+          \"\"\"
+          def register_and_log_in_admin(%{conn: conn}) do
+            user = #{app_module}.AccountsFixtures.admin_fixture()
+            %{conn: log_in_user(conn, user), user: user}
+          end
+
+          @doc \"\"\"
+          Logs the given `user` into the `conn`.
+
+          It returns an updated `conn`.
+          \"\"\"
+          def log_in_user(conn, user) do
+            token = #{app_module}.Accounts.generate_user_session_token(user)
+
+            conn
+            |> Phoenix.ConnTest.init_test_session(%{})
+            |> Plug.Conn.put_session(:user_token, token)
+          end
         """
 
-        # Add after register_and_log_in_user
+        # Find the end of the `setup tags do...end` block and add after it
         updated_string =
-          if String.contains?(node_string, "register_and_log_in_user") do
-            # Find the end of register_and_log_in_user function and add after it
-            String.replace(
-              node_string,
-              ~r/(def register_and_log_in_user\(%\{conn: conn\}\) do\s*.*?%\{conn: log_in_user\(conn, user\), user: user\}\s*end)/s,
-              "\\1\n\n  #{String.trim(admin_helper)}"
-            )
-          else
-            node_string
-          end
+          String.replace(
+            node_string,
+            ~r/(setup\s+tags\s+do\s*\n.*?end)/s,
+            "\\1\n\n#{String.trim_trailing(auth_helpers)}"
+          )
 
         {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
       end
@@ -1950,6 +2002,7 @@ defmodule Mix.Tasks.Sprout.Install do
     |> create_feature_flags_tests(assigns)
     |> update_application_for_feature_flags(assigns)
     |> update_router_for_feature_flags(assigns)
+    |> update_data_case_for_feature_flags(assigns)
     |> add_feature_flags_config(assigns)
   end
 
@@ -2182,6 +2235,42 @@ defmodule Mix.Tasks.Sprout.Install do
       [feature_flags_module, :cache_refresh_interval],
       {:code, Sourceror.parse_string!(":infinity")}
     )
+  end
+
+  defp update_data_case_for_feature_flags(igniter, assigns) do
+    app_module = assigns[:app_module]
+    data_case_module = Module.concat([app_module, "DataCase"])
+
+    igniter
+    |> Igniter.Project.Module.find_and_update_module!(data_case_module, fn zipper ->
+      node_string =
+        zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
+
+      if String.contains?(node_string, "FeatureFlags.Cache") do
+        {:ok, zipper}
+      else
+        sandbox_allow =
+          """
+
+              # Allow the FeatureFlags.Cache GenServer to share this test's DB connection
+              if cache_pid = Process.whereis(#{app_module}.FeatureFlags.Cache) do
+                Ecto.Adapters.SQL.Sandbox.allow(#{app_module}.Repo, self(), cache_pid)
+              end
+          """
+
+        # Insert before the closing `end` of the setup_sandbox function.
+        # We match the on_exit call (last statement) followed by the function's end.
+        updated_string =
+          String.replace(
+            node_string,
+            ~r/(def setup_sandbox\(tags\) do\b.*?on_exit\(fn\s*->\s*.*?end\))((\s*\n\s+end))/s,
+            "\\1\n#{String.trim_trailing(sandbox_allow)}\\3",
+            global: false
+          )
+
+        {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+      end
+    end)
   end
 
   defp update_default_policy_for_billing(igniter, assigns) do
