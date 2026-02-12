@@ -98,13 +98,15 @@ defmodule Mix.Tasks.Sprout.Install do
     web_module_name = app_module_name <> "Web"
     web_path = "lib/#{app_name}_web"
     app_path = "lib/#{app_name}"
+    test_path = "test/#{app_name}_test"
 
     assigns = [
       web_module: web_module_name,
       app_module: app_module_name,
       app_name: app_name,
       web_path: web_path,
-      app_path: app_path
+      app_path: app_path,
+      test_path: test_path
     ]
 
     igniter
@@ -610,10 +612,15 @@ defmodule Mix.Tasks.Sprout.Install do
   defp remove_page_controller(igniter, assigns) do
     web_path = assigns[:web_path]
 
+    app_name = assigns[:app_name]
+    test_path = assigns[:test_path]
+
     igniter
     |> Igniter.rm("#{web_path}/controllers/page_controller.ex")
     |> Igniter.rm("#{web_path}/controllers/page_html.ex")
     |> Igniter.rm("#{web_path}/controllers/page_html/home.html.heex")
+    |> Igniter.rm("#{web_path}/controllers/page_controller.ex")
+    |> Igniter.rm("#{test_path}/#{app_name}_web/controllers/page_controller_test.exs")
   end
 
   defp copy_logo_image(igniter) do
@@ -1986,7 +1993,9 @@ defmodule Mix.Tasks.Sprout.Install do
       File.read!(template_path("feature_flags/controllers/feature_flag/html/index.html.heex"))
 
     form_template =
-      File.read!(template_path("feature_flags/controllers/feature_flag/html/feature_flag_form.html.heex"))
+      File.read!(
+        template_path("feature_flags/controllers/feature_flag/html/feature_flag_form.html.heex")
+      )
 
     igniter
     |> Igniter.create_new_file(
@@ -2171,7 +2180,7 @@ defmodule Mix.Tasks.Sprout.Install do
       "test.exs",
       app_name,
       [feature_flags_module, :cache_refresh_interval],
-      {:code, Sourceror.parse_string!(":timer.seconds(1)")}
+      {:code, Sourceror.parse_string!(":infinity")}
     )
   end
 

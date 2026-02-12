@@ -186,6 +186,7 @@ defmodule <%= @web_module %>.Layouts do
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
   slot :inner_block, required: true
+  slot :menu, doc: "the menu items"
 
   def dashboard(assigns) do
     assigns = assign(assigns, :user, current_user(assigns.current_scope))
@@ -210,23 +211,13 @@ defmodule <%= @web_module %>.Layouts do
             <span class="font-semibold">Phoenix</span>
           </a>
         </div>
-        <%%!-- Sidebar Navigation - scrollable --%>
+        <%!-- Sidebar Navigation - scrollable --%>
         <nav class="flex-1 overflow-y-auto p-4">
-          <div class="space-y-1">
-            <a
-              href={~p"/dashboard"}
-              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
-            >
-              <.icon name="hero-home" class="size-5" />
-              <span>Dashboard</span>
-            </a>
-            <a
-              href={~p"/users/settings"}
-              class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
-            >
-              <.icon name="hero-cog-6-tooth" class="size-5" />
-              <span>Settings</span>
-            </a>
+          <div :if={@menu != []} class="space-y-1">
+            {render_slot(@menu)}
+          </div>
+          <div :if={@menu == []} class="space-y-1">
+            <.user_menu current_scope={@current_scope} />
           </div>
         </nav>
         <%%!-- Sidebar Footer --%>
@@ -267,6 +258,51 @@ defmodule <%= @web_module %>.Layouts do
 
       <.flash_group flash={@flash} />
     </div>
+    """
+  end
+
+  @doc """
+  Renders the user menu for the dashboard.
+  """
+  attr :current_scope, :map,
+    default: nil,
+    doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
+
+  def user_menu(assigns) do
+    ~H"""
+    <a
+      href={~p"/dashboard"}
+      class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
+    >
+      <.icon name="hero-home" class="size-5" />
+      <span>Dashboard</span>
+    </a>
+    <a
+      href={~p"/users/settings"}
+      class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
+    >
+      <.icon name="hero-cog-6-tooth" class="size-5" />
+      <span>Settings</span>
+    </a>
+    """
+  end
+
+  @doc """
+  Renders the user menu for the dashboard.
+  """
+  attr :current_scope, :map,
+    default: nil,
+    doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
+
+  def admin_menu(assigns) do
+    ~H"""
+    <a
+      href={~p"/admin/feature-flags"}
+      class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
+    >
+      <.icon name="hero-flag" class="size-5" />
+      <span>Feature Flags</span>
+    </a>
     """
   end
 

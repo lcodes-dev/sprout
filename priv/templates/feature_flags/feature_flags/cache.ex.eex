@@ -61,7 +61,7 @@ defmodule <%= @app_module %>.FeatureFlags.Cache do
   Refreshes the cache by reloading all flags from the database.
   """
   def refresh do
-    GenServer.cast(__MODULE__, :refresh)
+    GenServer.call(__MODULE__, :refresh)
   end
 
   # ============================================================================
@@ -82,9 +82,9 @@ defmodule <%= @app_module %>.FeatureFlags.Cache do
   end
 
   @impl true
-  def handle_cast(:refresh, state) do
+  def handle_call(:refresh, _from, state) do
     load_flags(state.table)
-    {:noreply, state}
+    {:reply, :ok, state}
   end
 
   @impl true
@@ -111,6 +111,8 @@ defmodule <%= @app_module %>.FeatureFlags.Cache do
       _ -> :ok
     end
   end
+
+  defp schedule_refresh(:infinity), do: :ok
 
   defp schedule_refresh(interval) do
     Process.send_after(self(), :refresh, interval)

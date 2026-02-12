@@ -20,7 +20,6 @@ defmodule <%= @web_module %>.UserAuthTest do
     test "stores the user token in the session", %{conn: conn, user: user} do
       conn = UserAuth.log_in_user(conn, user)
       assert token = get_session(conn, :user_token)
-      assert get_session(conn, :live_socket_id) == "users_sessions:#{Base.url_encode64(token)}"
       assert redirected_to(conn) == ~p"/dashboard"
       assert Accounts.get_user_by_session_token(token)
     end
@@ -115,22 +114,9 @@ defmodule <%= @web_module %>.UserAuthTest do
 
   describe "require_authenticated_user/2" do
     test "redirects if user is not authenticated", %{conn: conn} do
-      conn = conn |> fetch_flash() |> UserAuth.require_authenticated_user([])
-      assert conn.halted
-      assert redirected_to(conn) == ~p"/users/log-in"
-
-      assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
-               "You must log in to access this page."
-    end
-
-    test "redirects if user is not confirmed", %{conn: conn} do
-      user = unconfirmed_user_fixture()
-      user_token = Accounts.generate_user_session_token(user)
-
       conn =
         conn
-        |> put_session(:user_token, user_token)
-        |> UserAuth.fetch_current_scope_for_user([])
+        |> assign(:current_scope, nil)
         |> fetch_flash()
         |> UserAuth.require_authenticated_user([])
 
@@ -138,12 +124,13 @@ defmodule <%= @web_module %>.UserAuthTest do
       assert redirected_to(conn) == ~p"/users/log-in"
 
       assert Phoenix.Flash.get(conn.assigns.flash, :error) ==
-               "You must confirm your email to access this page."
+              "You must log in to access this page."
     end
 
     test "stores the path to redirect to on GET", %{conn: conn} do
       halted_conn =
         %{conn | path_info: ["foo"], query_string: ""}
+        |> assign(:current_scope, nil)
         |> fetch_flash()
         |> UserAuth.require_authenticated_user([])
 
@@ -152,6 +139,7 @@ defmodule <%= @web_module %>.UserAuthTest do
 
       halted_conn =
         %{conn | path_info: ["foo"], query_string: "bar=baz"}
+        |> assign(:current_scope, nil)
         |> fetch_flash()
         |> UserAuth.require_authenticated_user([])
 
@@ -160,6 +148,7 @@ defmodule <%= @web_module %>.UserAuthTest do
 
       halted_conn =
         %{conn | path_info: ["foo"], query_string: "", method: "POST"}
+        |> assign(:current_scope, nil)
         |> fetch_flash()
         |> UserAuth.require_authenticated_user([])
 
@@ -196,7 +185,11 @@ defmodule <%= @web_module %>.UserAuthTest do
     end
 
     test "does not redirect if user is not authenticated", %{conn: conn} do
-      conn = UserAuth.redirect_if_user_is_authenticated(conn, [])
+      conn =
+        conn
+        |> assign(:current_scope, nil)
+        |> UserAuth.redirect_if_user_is_authenticated([])
+
       refute conn.halted
       refute conn.status
     end

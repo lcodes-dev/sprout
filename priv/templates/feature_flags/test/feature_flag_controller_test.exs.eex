@@ -7,7 +7,7 @@ defmodule <%= @web_module %>.FeatureFlagControllerTest do
   alias <%= @app_module %>.FeatureFlags
 
   setup do
-    user = user_fixture()
+    user = admin_fixture()
     %{user: user}
   end
 

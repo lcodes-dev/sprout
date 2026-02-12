@@ -25,6 +25,15 @@ defmodule <%= @app_module %>.DefaultPolicy do
   # User settings — any authenticated user
   def authorize({UserSettingsController, _action}, %Scope{user: %{}}, _ctx), do: :ok
 
+  # Featur flags — admin@demo.com
+  def authorize({FeatureFlagController, _action}, %Scope{user: user} = _scope, _ctx) do
+    if(user.email == "admin@demo.com") do
+      :ok
+    else
+      {:error, :unauthorized}
+    end
+  end
+
   # Default deny
   def authorize(_action, _scope, _ctx), do: {:error, :unauthorized}
 end
