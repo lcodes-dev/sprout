@@ -180,8 +180,7 @@ if Code.ensure_loaded?(Igniter) do
       |> maybe_add_payments(include_payments? and include_auth?, assigns)
       # Optional: Add feature flags
       |> maybe_add_feature_flags(include_feature_flags?, assigns)
-      # Add monitoring dependencies
-      |> add_error_tracker()
+      # Add monitoring dependencies (phoenix_analytics only - error_tracker runs in post-install)
       |> add_phoenix_analytics(assigns)
       # Run post-install tasks
       |> run_post_install_tasks(postgres_project?)
@@ -197,6 +196,7 @@ if Code.ensure_loaded?(Igniter) do
     defp run_post_install_tasks(igniter, postgres_project?) do
       igniter
       |> Igniter.add_task("deps.get")
+      |> Igniter.add_task("igniter.install", ["error_tracker"])
       |> Igniter.add_task("assets.setup")
       |> Igniter.add_task("cmd", ["npm", "install", "--prefix", "assets"])
       |> maybe_add_docker_compose_task(postgres_project?)
@@ -2523,10 +2523,6 @@ if Code.ensure_loaded?(Igniter) do
     # ============================================================================
     # Monitoring Dependencies
     # ============================================================================
-
-    defp add_error_tracker(igniter) do
-      Igniter.add_task(igniter, "igniter.install", ["error_tracker"])
-    end
 
     defp add_phoenix_analytics(igniter, assigns) do
       app_name = assigns[:app_name]
