@@ -33,7 +33,7 @@ defmodule <%= @app_module %>.Announcements do
       where: b.is_active == true,
       where: is_nil(b.starts_at) or b.starts_at <= ^now,
       where: is_nil(b.ends_at) or b.ends_at > ^now,
-      order_by: [desc: b.inserted_at]
+      order_by: [desc: b.inserted_at, desc: b.id]
     )
     |> Repo.all()
   end

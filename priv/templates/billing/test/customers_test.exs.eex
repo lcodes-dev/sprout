@@ -12,7 +12,7 @@ defmodule <%= @app_module %>.Billing.CustomersTest do
     existing_config = Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing, [])
 
     new_config = Keyword.put(existing_config, :billable_types, [
-      user: <%= @app_module %>.Accounts.User
+      user: <%= @app_module %>.Accounts.Schemas.User
     ])
 
     Application.put_env(:<%= @app_name %>, <%= @app_module %>.Billing, new_config)

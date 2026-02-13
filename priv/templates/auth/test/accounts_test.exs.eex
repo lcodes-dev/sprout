@@ -122,18 +122,18 @@ defmodule <%= @app_module %>.AccountsTest do
     end
   end
 
-  describe "apply_user_email/2" do
+  describe "change_user_email/3" do
     setup do
       %{user: user_fixture()}
     end
 
     test "requires email to change", %{user: user} do
-      {:error, changeset} = Accounts.apply_user_email(user, %{})
+      changeset = Accounts.change_user_email(user, %{})
       assert %{email: ["did not change"]} = errors_on(changeset)
     end
 
     test "validates email", %{user: user} do
-      {:error, changeset} = Accounts.apply_user_email(user, %{email: "not valid"})
+      changeset = Accounts.change_user_email(user, %{email: "not valid"})
 
       assert %{email: ["must have the @ sign and no spaces"]} = errors_on(changeset)
     end
@@ -141,7 +141,7 @@ defmodule <%= @app_module %>.AccountsTest do
     test "validates maximum value for email for security", %{user: user} do
       too_long = String.duplicate("db", 100)
 
-      {:error, changeset} = Accounts.apply_user_email(user, %{email: too_long})
+      changeset = Accounts.change_user_email(user, %{email: too_long})
 
       assert "should be at most 160 character(s)" in errors_on(changeset).email
     end
@@ -149,14 +149,15 @@ defmodule <%= @app_module %>.AccountsTest do
     test "validates email uniqueness", %{user: user} do
       %{email: email} = user_fixture()
 
-      {:error, changeset} = Accounts.apply_user_email(user, %{email: email})
+      changeset = Accounts.change_user_email(user, %{email: email})
 
       assert "has already been taken" in errors_on(changeset).email
     end
 
     test "applies the email without persisting it", %{user: user} do
       email = unique_user_email()
-      {:ok, user} = Accounts.apply_user_email(user, %{email: email})
+      changeset = Accounts.change_user_email(user, %{email: email})
+      user = Ecto.Changeset.apply_changes(changeset)
       assert user.email == email
       assert Accounts.get_user!(user.id).email != email
     end
@@ -200,7 +201,7 @@ defmodule <%= @app_module %>.AccountsTest do
       assert changed_user.email != user.email
       assert changed_user.email == email
       assert changed_user.confirmed_at
-      assert changed_user.confirmed_at != user.confirmed_at
+      assert changed_user.confirmed_at == user.confirmed_at
       refute Repo.get_by(UserToken, user_id: user.id)
     end
 
@@ -456,7 +457,7 @@ defmodule <%= @app_module %>.AccountsTest do
       %{user: user, token: token}
     end
 
-    test "validates password", %{user: user} do
+    test "validates password", %{user: _user, token: token} do
       {:error, changeset} =
         Accounts.reset_user_password(token, %{
           password: "short",
