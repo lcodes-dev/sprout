@@ -367,24 +367,20 @@ if Code.ensure_loaded?(Igniter) do
       Mix.shell().info("""
 
       Docker requirement for development services
-      ------------------------------------------
+
       Sprout will add `compose.yml` for PostgreSQL 18 and ngrok.
       Docker Desktop/Engine must be installed and running.
+      ------------------------------------------
       """)
 
-      if docker_running?() do
-        if igniter.args.options[:yes] ||
-             Igniter.Util.IO.yes?("Docker is running. Continue with Sprout installation?") do
-          igniter
-        else
-          Mix.raise(
-            "Installation cancelled. Start Docker and run `mix sprout.install` again when ready."
-          )
-        end
+      if not docker_running?() and
+           Igniter.Util.IO.yes?("Docker is not running. Continue with Sprout installation?") do
+        igniter
       else
-        Mix.raise(
-          "Docker is required for dev services but is not running. Start Docker and rerun `mix sprout.install`."
-        )
+        Mix.shell().info("""
+        Docker is running ✓
+        ------------------------------------------
+        """)
       end
     end
 

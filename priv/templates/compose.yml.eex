@@ -2,9 +2,9 @@ services:
   ngrok:
     image: ngrok/ngrok:latest
     restart: unless-stopped
-    command: ["http", "host.docker.internal:4000", "--log=stdout"]
+    command: ["http", "host.docker.internal:4000", "--log=stdout", "--url=${NGROK_URL}"]
     environment:
-      NGROK_AUTHTOKEN: ${NGROK_AUTHTOKEN:?Set NGROK_AUTHTOKEN in .env}
+      NGROK_AUTHTOKEN: ${NGROK_AUTH_TOKEN}
     ports:
       - "4040:4040"
 
