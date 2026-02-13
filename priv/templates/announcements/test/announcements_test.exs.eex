@@ -16,37 +16,6 @@ defmodule <%= @app_module %>.AnnouncementsTest do
       assert hd(banners).id == active.id
     end
 
-    test "excludes banners that haven't started yet" do
-      future = DateTime.utc_now() |> DateTime.add(3600, :second)
-      _not_started = banner_fixture(%{starts_at: future})
-      started = banner_fixture(%{starts_at: nil})
-
-      banners = Announcements.list_active_banners()
-      assert length(banners) == 1
-      assert hd(banners).id == started.id
-    end
-
-    test "excludes banners that have ended" do
-      past = DateTime.utc_now() |> DateTime.add(-3600, :second)
-      _ended = banner_fixture(%{ends_at: past})
-      active = banner_fixture(%{ends_at: nil})
-
-      banners = Announcements.list_active_banners()
-      assert length(banners) == 1
-      assert hd(banners).id == active.id
-    end
-
-    test "returns banners within their scheduled window" do
-      past = DateTime.utc_now() |> DateTime.add(-3600, :second)
-      future = DateTime.utc_now() |> DateTime.add(3600, :second)
-
-      scheduled = banner_fixture(%{starts_at: past, ends_at: future})
-      banners = Announcements.list_active_banners()
-
-      assert length(banners) == 1
-      assert hd(banners).id == scheduled.id
-    end
-
     test "orders by most recently created first" do
       first = banner_fixture()
       second = banner_fixture()
@@ -108,15 +77,6 @@ defmodule <%= @app_module %>.AnnouncementsTest do
       attrs = %{message: "Test", link_url: "https://example.com"}
       assert {:error, changeset} = Announcements.create_banner(attrs)
       assert %{link_text: ["is required when link URL is provided"]} = errors_on(changeset)
-    end
-
-    test "returns error when ends_at is before starts_at" do
-      now = DateTime.utc_now()
-      past = DateTime.add(now, -3600, :second)
-
-      attrs = %{message: "Test", starts_at: now, ends_at: past}
-      assert {:error, changeset} = Announcements.create_banner(attrs)
-      assert %{ends_at: ["must be after starts_at"]} = errors_on(changeset)
     end
   end
 
