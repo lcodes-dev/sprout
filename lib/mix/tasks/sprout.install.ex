@@ -158,6 +158,7 @@ if Code.ensure_loaded?(Igniter) do
       |> create_banner_schema(assigns)
       |> create_banner_component(assigns)
       |> create_fetch_banners_plug(assigns)
+      |> create_announcement_banner_controller(assigns)
       |> create_announcements_migration(assigns)
       |> create_announcements_tests(assigns)
       |> update_router_for_banners(assigns)
@@ -909,6 +910,56 @@ if Code.ensure_loaded?(Igniter) do
       Igniter.create_new_file(igniter, path, content, on_exists: :skip)
     end
 
+    defp create_announcement_banner_controller(igniter, assigns) do
+      web_path = assigns[:web_path]
+
+      controller_content =
+        render_template(
+          "announcements/controllers/announcement_banner/announcement_banner_controller.ex.eex",
+          assigns
+        )
+
+      html_content =
+        render_template(
+          "announcements/controllers/announcement_banner/announcement_banner_html.ex.eex",
+          assigns
+        )
+
+      index_template =
+        File.read!(
+          template_path("announcements/controllers/announcement_banner/html/index.html.heex")
+        )
+
+      form_template =
+        File.read!(
+          template_path(
+            "announcements/controllers/announcement_banner/html/announcement_banner_form.html.heex"
+          )
+        )
+
+      igniter
+      |> Igniter.create_new_file(
+        "#{web_path}/controllers/announcement_banner/announcement_banner_controller.ex",
+        controller_content,
+        on_exists: :skip
+      )
+      |> Igniter.create_new_file(
+        "#{web_path}/controllers/announcement_banner/announcement_banner_html.ex",
+        html_content,
+        on_exists: :skip
+      )
+      |> Igniter.create_new_file(
+        "#{web_path}/controllers/announcement_banner/html/index.html.heex",
+        index_template,
+        on_exists: :skip
+      )
+      |> Igniter.create_new_file(
+        "#{web_path}/controllers/announcement_banner/html/announcement_banner_form.html.heex",
+        form_template,
+        on_exists: :skip
+      )
+    end
+
     defp create_announcements_migration(igniter, assigns) do
       timestamp = next_migration_timestamp()
       path = "priv/repo/migrations/#{timestamp}_create_announcements_table.exs"
@@ -937,10 +988,26 @@ if Code.ensure_loaded?(Igniter) do
           on_exists: :skip
         )
 
-      # Create announcements test
-      test_content = render_template("announcements/test/announcements_test.exs.eex", assigns)
+      # Create announcements context test
+      context_test_content =
+        render_template("announcements/test/announcements_test.exs.eex", assigns)
 
-      Igniter.create_new_file(igniter, "test/#{app_name}/announcements_test.exs", test_content,
+      igniter =
+        Igniter.create_new_file(
+          igniter,
+          "test/#{app_name}/announcements_test.exs",
+          context_test_content,
+          on_exists: :skip
+        )
+
+      # Create announcement banner controller test
+      controller_test_content =
+        render_template("announcements/test/announcement_banner_controller_test.exs.eex", assigns)
+
+      Igniter.create_new_file(
+        igniter,
+        "test/#{app_name}_web/announcement_banner_controller_test.exs",
+        controller_test_content,
         on_exists: :skip
       )
     end
@@ -958,20 +1025,67 @@ if Code.ensure_loaded?(Igniter) do
             |> Sourceror.Zipper.node()
             |> Sourceror.to_string()
 
-          if String.contains?(node_string, "FetchBanners") do
-            {:ok, zipper}
-          else
-            # Add plug FetchBanners to the :browser pipeline
-            updated_string =
+          # Add plug FetchBanners to the :browser pipeline if not already present
+          updated_string =
+            if String.contains?(node_string, "FetchBanners") do
+              node_string
+            else
               String.replace(
                 node_string,
                 ~r/(pipeline :browser do\s*.+?)(\n\s*end)/s,
                 "\\1\n    plug #{web_module}.Plugs.FetchBanners\\2",
                 global: false
               )
+            end
 
-            {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
-          end
+          # Add announcement banner admin routes if not already present
+          updated_string =
+            if String.contains?(updated_string, "AnnouncementBannerController") do
+              updated_string
+            else
+              banner_routes =
+                if String.contains?(updated_string, "require_authenticated_user") do
+                  # Auth is installed, put announcement banners behind auth
+                  """
+                  # Announcement Banners admin (require auth)
+                  scope "/admin", #{web_module} do
+                    pipe_through [:browser, :require_authenticated_user]
+
+                    get "/announcement-banners", AnnouncementBannerController, :index
+                    get "/announcement-banners/new", AnnouncementBannerController, :new
+                    post "/announcement-banners", AnnouncementBannerController, :create
+                    get "/announcement-banners/:id/edit", AnnouncementBannerController, :edit
+                    put "/announcement-banners/:id", AnnouncementBannerController, :update
+                    put "/announcement-banners/:id/toggle", AnnouncementBannerController, :toggle
+                    delete "/announcement-banners/:id", AnnouncementBannerController, :delete
+                  end
+                  """
+                else
+                  # No auth, just use browser pipeline
+                  """
+                  # Announcement Banners admin
+                  scope "/admin", #{web_module} do
+                    pipe_through [:browser]
+
+                    get "/announcement-banners", AnnouncementBannerController, :index
+                    get "/announcement-banners/new", AnnouncementBannerController, :new
+                    post "/announcement-banners", AnnouncementBannerController, :create
+                    get "/announcement-banners/:id/edit", AnnouncementBannerController, :edit
+                    put "/announcement-banners/:id", AnnouncementBannerController, :update
+                    put "/announcement-banners/:id/toggle", AnnouncementBannerController, :toggle
+                    delete "/announcement-banners/:id", AnnouncementBannerController, :delete
+                  end
+                  """
+                end
+
+              String.replace(
+                updated_string,
+                ~r/(\n\s*)end\s*$/,
+                "\n\n  #{String.trim(banner_routes)}\\1end"
+              )
+            end
+
+          {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
         end
       )
     end

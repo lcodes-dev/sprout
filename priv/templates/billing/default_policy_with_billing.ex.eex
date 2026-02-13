@@ -12,6 +12,7 @@ defmodule <%= @app_module %>.DefaultPolicy do
   alias <%= @app_module %>.Accounts.Schemas.Scope
 
   alias <%= @web_module %>.{
+    AnnouncementBannerController,
     DashboardController,
     UserSettingsController,
     BillingController,
@@ -30,7 +31,16 @@ defmodule <%= @app_module %>.DefaultPolicy do
   # Billing — any authenticated user
   def authorize({BillingController, _action}, %Scope{user: %{}}, _ctx), do: :ok
 
-  # Featur flags — admin@demo.com
+  # Announcement banners — admin@demo.com
+  def authorize({AnnouncementBannerController, _action}, %Scope{user: user} = _scope, _ctx) do
+    if(user.email == "admin@demo.com") do
+      :ok
+    else
+      {:error, :unauthorized}
+    end
+  end
+
+  # Feature flags — admin@demo.com
   def authorize({FeatureFlagController, _action}, %Scope{user: user} = _scope, _ctx) do
     if(user.email == "admin@demo.com") do
       :ok
