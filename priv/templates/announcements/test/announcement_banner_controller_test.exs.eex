@@ -1,0 +1,159 @@
+defmodule <%= @web_module %>.AnnouncementBannerControllerTest do
+  use <%= @web_module %>.ConnCase, async: <%= @postgres_project? %>
+
+  import <%= @app_module %>.AccountsFixtures
+  import <%= @app_module %>.AnnouncementsFixtures
+
+  alias <%= @app_module %>.Announcements
+
+  setup do
+    user = admin_fixture()
+    %{user: user}
+  end
+
+  describe "GET /admin/announcement-banners" do
+    test "lists all announcement banners", %{conn: conn, user: user} do
+      _banner = banner_fixture(%{message: "Test announcement"})
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> get(~p"/admin/announcement-banners")
+
+      response = html_response(conn, 200)
+      assert response =~ "Announcement Banners"
+      assert response =~ "Test announcement"
+    end
+  end
+
+  describe "GET /admin/announcement-banners/new" do
+    test "renders the new banner form", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> log_in_user(user)
+        |> get(~p"/admin/announcement-banners/new")
+
+      response = html_response(conn, 200)
+      assert response =~ "New Announcement Banner"
+    end
+  end
+
+  describe "POST /admin/announcement-banners" do
+    test "creates a banner with valid params", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> log_in_user(user)
+        |> post(~p"/admin/announcement-banners", %{
+          "banner" => %{"message" => "New banner", "bg_color" => "primary"}
+        })
+
+      assert redirected_to(conn) == ~p"/admin/announcement-banners"
+      banners = Announcements.list_all_banners()
+      assert Enum.any?(banners, fn b -> b.message == "New banner" end)
+    end
+
+    test "renders errors for invalid params", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> log_in_user(user)
+        |> post(~p"/admin/announcement-banners", %{
+          "banner" => %{"message" => ""}
+        })
+
+      response = html_response(conn, 200)
+      assert response =~ "Oops"
+    end
+
+    test "validates link field pairing", %{conn: conn, user: user} do
+      conn =
+        conn
+        |> log_in_user(user)
+        |> post(~p"/admin/announcement-banners", %{
+          "banner" => %{"message" => "Test", "link_text" => "Click here"}
+        })
+
+      response = html_response(conn, 200)
+      assert response =~ "is required when link text is provided"
+    end
+
+    test "validates end date after start date", %{conn: conn, user: user} do
+      starts_at = DateTime.utc_now() |> DateTime.add(1, :day)
+      ends_at = DateTime.utc_now()
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> post(~p"/admin/announcement-banners", %{
+          "banner" => %{
+            "message" => "Test",
+            "starts_at" => DateTime.to_iso8601(starts_at),
+            "ends_at" => DateTime.to_iso8601(ends_at)
+          }
+        })
+
+      response = html_response(conn, 200)
+      assert response =~ "must be after starts_at"
+    end
+  end
+
+  describe "GET /admin/announcement-banners/:id/edit" do
+    test "renders the edit form", %{conn: conn, user: user} do
+      banner = banner_fixture(%{message: "Editable banner"})
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> get(~p"/admin/announcement-banners/#{banner}/edit")
+
+      response = html_response(conn, 200)
+      assert response =~ "Edit Announcement Banner"
+      assert response =~ "Editable banner"
+    end
+  end
+
+  describe "PUT /admin/announcement-banners/:id" do
+    test "updates a banner", %{conn: conn, user: user} do
+      banner = banner_fixture(%{message: "Original message"})
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> put(~p"/admin/announcement-banners/#{banner}", %{
+          "banner" => %{"message" => "Updated message"}
+        })
+
+      assert redirected_to(conn) == ~p"/admin/announcement-banners"
+      updated = Announcements.get_banner!(banner.id)
+      assert updated.message == "Updated message"
+    end
+  end
+
+  describe "PUT /admin/announcement-banners/:id/toggle" do
+    test "toggles a banner's active state", %{conn: conn, user: user} do
+      banner = banner_fixture(%{message: "Toggle test", is_active: false})
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> put(~p"/admin/announcement-banners/#{banner}/toggle")
+
+      assert redirected_to(conn) == ~p"/admin/announcement-banners"
+      toggled = Announcements.get_banner!(banner.id)
+      assert toggled.is_active == true
+    end
+  end
+
+  describe "DELETE /admin/announcement-banners/:id" do
+    test "deletes a banner", %{conn: conn, user: user} do
+      banner = banner_fixture(%{message: "To be deleted"})
+
+      conn =
+        conn
+        |> log_in_user(user)
+        |> delete(~p"/admin/announcement-banners/#{banner}")
+
+      assert redirected_to(conn) == ~p"/admin/announcement-banners"
+      assert_raise Ecto.NoResultsError, fn -> Announcements.get_banner!(banner.id) end
+    end
+  end
+end

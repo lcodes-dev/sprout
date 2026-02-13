@@ -1,0 +1,123 @@
+defmodule <%= @web_module %>.AnnouncementBannerController do
+  @moduledoc """
+  Controller for managing announcement banners.
+
+  Provides an admin interface for creating, updating, toggling, and
+  deleting announcement banners.
+  """
+
+  use <%= @web_module %>, :controller
+
+  alias <%= @app_module %>.Announcements
+  alias <%= @app_module %>.Announcements.Banner
+
+  @doc """
+  Lists all announcement banners.
+  """
+  def index(conn, _params) do
+    banners = Announcements.list_all_banners()
+    render(conn, :index, banners: banners)
+  end
+
+  @doc """
+  Renders the new announcement banner form.
+  """
+  def new(conn, _params) do
+    changeset = Announcements.change_banner(%Banner{})
+    render(conn, :announcement_banner_form, form: Phoenix.Component.to_form(changeset), action: ~p"/admin/announcement-banners")
+  end
+
+  @doc """
+  Creates a new announcement banner.
+  """
+  def create(conn, %{"banner" => banner_params}) do
+    case Announcements.create_banner(banner_params) do
+      {:ok, _banner} ->
+        conn
+        |> put_flash(:info, "Announcement banner created.")
+        |> redirect(to: ~p"/admin/announcement-banners")
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        render(conn, :announcement_banner_form, form: Phoenix.Component.to_form(changeset), action: ~p"/admin/announcement-banners")
+    end
+  end
+
+  @doc """
+  Renders the edit announcement banner form.
+  """
+  def edit(conn, %{"id" => id}) do
+    banner = Announcements.get_banner!(id)
+    changeset = Announcements.change_banner(banner)
+    render(conn, :announcement_banner_form, form: Phoenix.Component.to_form(changeset), action: ~p"/admin/announcement-banners/#{banner}")
+  rescue
+    Ecto.NoResultsError ->
+      conn
+      |> put_flash(:error, "Announcement banner not found.")
+      |> redirect(to: ~p"/admin/announcement-banners")
+  end
+
+  @doc """
+  Updates an announcement banner.
+  """
+  def update(conn, %{"id" => id, "banner" => banner_params}) do
+    banner = Announcements.get_banner!(id)
+
+    case Announcements.update_banner(banner, banner_params) do
+      {:ok, _banner} ->
+        conn
+        |> put_flash(:info, "Announcement banner updated.")
+        |> redirect(to: ~p"/admin/announcement-banners")
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        render(conn, :announcement_banner_form, form: Phoenix.Component.to_form(changeset), action: ~p"/admin/announcement-banners/#{banner}")
+    end
+  rescue
+    Ecto.NoResultsError ->
+      conn
+      |> put_flash(:error, "Announcement banner not found.")
+      |> redirect(to: ~p"/admin/announcement-banners")
+  end
+
+  @doc """
+  Toggles an announcement banner's active state.
+  """
+  def toggle(conn, %{"id" => id}) do
+    banner = Announcements.get_banner!(id)
+
+    case Announcements.update_banner(banner, %{is_active: !banner.is_active}) do
+      {:ok, updated_banner} ->
+        state = if updated_banner.is_active, do: "activated", else: "deactivated"
+
+        conn
+        |> put_flash(:info, "Announcement banner #{state}.")
+        |> redirect(to: ~p"/admin/announcement-banners")
+
+      {:error, _} ->
+        conn
+        |> put_flash(:error, "Could not toggle announcement banner.")
+        |> redirect(to: ~p"/admin/announcement-banners")
+    end
+  rescue
+    Ecto.NoResultsError ->
+      conn
+      |> put_flash(:error, "Announcement banner not found.")
+      |> redirect(to: ~p"/admin/announcement-banners")
+  end
+
+  @doc """
+  Deletes an announcement banner.
+  """
+  def delete(conn, %{"id" => id}) do
+    banner = Announcements.get_banner!(id)
+    {:ok, _} = Announcements.delete_banner(banner)
+
+    conn
+    |> put_flash(:info, "Announcement banner deleted.")
+    |> redirect(to: ~p"/admin/announcement-banners")
+  rescue
+    Ecto.NoResultsError ->
+      conn
+      |> put_flash(:error, "Announcement banner not found.")
+      |> redirect(to: ~p"/admin/announcement-banners")
+  end
+end

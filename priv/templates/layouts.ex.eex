@@ -304,6 +304,14 @@ defmodule <%= @web_module %>.Layouts do
       <.icon name="hero-flag" class="size-5" />
       <span>Feature Flags</span>
     </a>
+
+    <a
+      href={~p"/admin/announcement-banners"}
+      class="flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium hover:bg-muted"
+    >
+      <.icon name="hero-megaphone" class="size-5" />
+      <span>Announcements</span>
+    </a>
     """
   end
 

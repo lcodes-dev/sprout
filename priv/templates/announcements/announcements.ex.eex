@@ -11,6 +11,22 @@ defmodule <%= @app_module %>.Announcements do
   alias <%= @app_module %>.Announcements.Banner
 
   @doc """
+  Returns all banners ordered by most recently created first.
+
+  Used by admin interface to show all banners regardless of active status.
+
+  ## Examples
+
+      iex> list_all_banners()
+      [%Banner{}, ...]
+
+  """
+  def list_all_banners do
+    from(b in Banner, order_by: [desc: b.inserted_at, desc: b.id])
+    |> Repo.all()
+  end
+
+  @doc """
   Returns the list of currently active banners.
 
   A banner is considered active when:

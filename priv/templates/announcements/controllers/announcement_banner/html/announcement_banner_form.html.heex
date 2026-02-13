@@ -1,0 +1,90 @@
+<turbo-frame id="announcement-banners-container">
+  <div class="max-w-2xl">
+    <div class="mb-6">
+      <a
+        href={~p"/admin/announcement-banners"}
+        class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1"
+      >
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+            d="M15 19l-7-7 7-7"
+          />
+        </svg>
+        Back to Announcement Banners
+      </a>
+    </div>
+
+    <h1 class="text-2xl font-bold mb-8">
+      {if @form.source.data.id, do: "Edit Announcement Banner", else: "New Announcement Banner"}
+    </h1>
+
+    <.form for={@form} id="announcement-banner-form" action={@action} class="space-y-4">
+      <%= if @form.source.action do %>
+        <div class="alert-destructive">
+          Oops, something went wrong! Please check the errors below.
+        </div>
+      <% end %>
+
+      <.input
+        field={@form[:message]}
+        type="textarea"
+        label="Message"
+        placeholder="Enter your announcement message..."
+        required
+      />
+
+      <.input
+        field={@form[:link_text]}
+        type="text"
+        label="Link Text"
+        placeholder="Learn more"
+      />
+
+      <.input
+        field={@form[:link_url]}
+        type="text"
+        label="Link URL"
+        placeholder="https://example.com"
+      />
+
+      <.input
+        field={@form[:bg_color]}
+        type="select"
+        label="Background Color"
+        options={[
+          {"Primary (Blue)", "primary"},
+          {"Destructive (Red)", "destructive"},
+          {"Warning (Amber)", "warning"},
+          {"Info (Sky)", "info"}
+        ]}
+      />
+
+      <.input
+        field={@form[:starts_at]}
+        type="datetime-local"
+        label="Starts At (UTC)"
+        helper_text="Leave empty to start immediately"
+      />
+
+      <.input
+        field={@form[:ends_at]}
+        type="datetime-local"
+        label="Ends At (UTC)"
+        helper_text="Leave empty to never expire"
+      />
+
+      <.input
+        field={@form[:is_active]}
+        type="checkbox"
+        label="Active"
+      />
+
+      <.button type="submit">
+        {if @form.source.data.id, do: "Update Banner", else: "Create Banner"}
+      </.button>
+    </.form>
+  </div>
+</turbo-frame>
