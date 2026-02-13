@@ -1,5 +1,5 @@
 defmodule <%= @app_module %>.Billing.Paddle.WebhookHandlerTest do
-  use <%= @app_module %>.DataCase, async: false
+  use <%= @app_module %>.DataCase, async: <%= @postgres_project? %>
 
   import ExUnit.CaptureLog
 

@@ -101,16 +101,17 @@ if Code.ensure_loaded?(Igniter) do
       app_path = "lib/#{app_name}"
       test_path = "test"
 
+      postgres_project? = postgres_project?(app_path)
+
       assigns = [
         web_module: web_module_name,
         app_module: app_module_name,
         app_name: app_name,
         web_path: web_path,
         app_path: app_path,
-        test_path: test_path
+        test_path: test_path,
+        postgres_project?: postgres_project?
       ]
-
-      postgres_project? = postgres_project?(assigns)
 
       igniter = ensure_docker_ready_for_postgres!(igniter, postgres_project?)
 
@@ -359,8 +360,8 @@ if Code.ensure_loaded?(Igniter) do
       )
     end
 
-    defp postgres_project?(assigns) do
-      repo_path = "#{assigns[:app_path]}/repo.ex"
+    defp postgres_project?(app_path) do
+      repo_path = "#{app_path}/repo.ex"
 
       case File.read(repo_path) do
         {:ok, content} -> String.contains?(content, "adapter: Ecto.Adapters.Postgres")

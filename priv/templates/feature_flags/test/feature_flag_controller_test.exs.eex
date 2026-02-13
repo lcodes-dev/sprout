@@ -1,5 +1,5 @@
 defmodule <%= @web_module %>.FeatureFlagControllerTest do
-  use <%= @web_module %>.ConnCase, async: false
+  use <%= @web_module %>.ConnCase, async: <%= @postgres_project? %>
 
   import <%= @app_module %>.AccountsFixtures
   import <%= @app_module %>.FeatureFlagsFixtures

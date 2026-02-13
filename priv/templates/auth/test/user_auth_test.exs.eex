@@ -1,5 +1,5 @@
 defmodule <%= @web_module %>.UserAuthTest do
-  use <%= @web_module %>.ConnCase, async: false
+  use <%= @web_module %>.ConnCase, async: <%= @postgres_project? %>
 
   alias <%= @app_module %>.Accounts
   alias <%= @web_module %>.UserAuth
