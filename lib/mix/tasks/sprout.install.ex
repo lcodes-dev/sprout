@@ -2631,6 +2631,113 @@ if Code.ensure_loaded?(Igniter) do
       else
         igniter
       end
+
+      # 5. Update endpoint to add RequestTracker plug
+      igniter = update_endpoint_for_analytics(igniter, assigns)
+
+      # 6. Update router for analytics dashboard
+      update_router_for_analytics(igniter, assigns)
+    end
+
+    defp update_endpoint_for_analytics(igniter, assigns) do
+      web_module = assigns[:web_module]
+      endpoint_module = Module.concat([web_module, "Endpoint"])
+
+      plug_code = "plug PhoenixAnalytics.Plugs.RequestTracker"
+
+      igniter
+      |> Igniter.Project.Module.find_and_update_module!(endpoint_module, fn zipper ->
+        node_string =
+          zipper
+          |> Sourceror.Zipper.topmost()
+          |> Sourceror.Zipper.node()
+          |> Sourceror.to_string()
+
+        if String.contains?(node_string, "PhoenixAnalytics.Plugs.RequestTracker") do
+          {:ok, zipper}
+        else
+          # Find Plug.Static and add the RequestTracker plug after it
+          case Igniter.Code.Common.move_to(zipper, fn z ->
+                 Igniter.Code.Function.function_call?(z, :plug, 2) and
+                   Igniter.Code.Common.node_matches_pattern?(z, {:plug, _, [{:__aliases__, _, [:Plug, :Static]} | _]})
+               end) do
+            {:ok, static_zipper} ->
+              {:ok,
+               static_zipper
+               |> Igniter.Code.Common.add_code(plug_code, placement: :after)
+               |> Sourceror.Zipper.topmost()}
+
+            :error ->
+              {:ok, zipper}
+          end
+        end
+      end)
+    end
+
+    defp update_router_for_analytics(igniter, assigns) do
+      web_module = assigns[:web_module]
+
+      igniter
+      |> Igniter.Project.Module.find_and_update_module!(
+        Module.concat([web_module, "Router"]),
+        fn zipper ->
+          node_string =
+            zipper
+            |> Sourceror.Zipper.topmost()
+            |> Sourceror.Zipper.node()
+            |> Sourceror.to_string()
+
+          # Add `use PhoenixAnalytics.Web, :router` if not present
+          updated_string =
+            if String.contains?(node_string, "PhoenixAnalytics.Web") do
+              node_string
+            else
+              # Add after the `use AppWeb, :router` line
+              String.replace(
+                node_string,
+                ~r/(use #{web_module}, :router)/,
+                "\\1\n  use PhoenixAnalytics.Web, :router"
+              )
+            end
+
+          # Add analytics dashboard route if not present
+          updated_string =
+            if String.contains?(updated_string, "phoenix_analytics_dashboard") do
+              updated_string
+            else
+              analytics_routes =
+                if String.contains?(updated_string, "require_authenticated_user") do
+                  # Auth is installed, put analytics behind auth
+                  """
+                  # Analytics Dashboard (require auth)
+                  scope "/admin", #{web_module} do
+                    pipe_through [:browser, :require_authenticated_user]
+
+                    phoenix_analytics_dashboard "/analytics"
+                  end
+                  """
+                else
+                  # No auth, just use browser pipeline
+                  """
+                  # Analytics Dashboard
+                  scope "/admin", #{web_module} do
+                    pipe_through [:browser]
+
+                    phoenix_analytics_dashboard "/analytics"
+                  end
+                  """
+                end
+
+              String.replace(
+                updated_string,
+                ~r/(\n\s*)end\s*$/,
+                "\n\n  #{String.trim(analytics_routes)}\\1end"
+              )
+            end
+
+          {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+        end
+      )
     end
 
     defp update_default_policy_for_billing(igniter, assigns) do
