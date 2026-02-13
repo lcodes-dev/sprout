@@ -2574,26 +2574,14 @@ if Code.ensure_loaded?(Igniter) do
           {:code, Sourceror.parse_string!(~s{System.get_env("CACHE_TTL") || 60})}
         )
 
-      # 2c. Add config to test.exs
+      # 2c. Disable phoenix_analytics in test.exs
       igniter =
         igniter
         |> Igniter.Project.Config.configure(
           "test.exs",
           :phoenix_analytics,
-          [:repo],
-          {:code, Sourceror.parse_string!("#{app_module}.Repo")}
-        )
-        |> Igniter.Project.Config.configure(
-          "test.exs",
-          :phoenix_analytics,
-          [:app_domain],
-          {:code, Sourceror.parse_string!(~s{System.get_env("PHX_HOST") || "example.com"})}
-        )
-        |> Igniter.Project.Config.configure(
-          "test.exs",
-          :phoenix_analytics,
-          [:cache_ttl],
-          {:code, Sourceror.parse_string!(~s{System.get_env("CACHE_TTL") || 60})}
+          [:enabled],
+          false
         )
 
       # 3. Create main migration
