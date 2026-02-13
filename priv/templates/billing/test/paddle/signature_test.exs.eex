@@ -1,5 +1,5 @@
 defmodule <%= @app_module %>.Billing.Paddle.SignatureTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: true, group: :billing_config
 
   import ExUnit.CaptureLog
 
@@ -8,13 +8,16 @@ defmodule <%= @app_module %>.Billing.Paddle.SignatureTest do
   @test_secret "whsec_test_secret_key_for_testing"
 
   setup do
-    # Configure test webhook secret
-    Application.put_env(:<%= @app_name %>, <%= @app_module %>.Billing, [
-      paddle: [webhook_secret: @test_secret]
-    ])
+    existing_config = Application.get_env(:<%= @app_name %>, <%= @app_module %>.Billing, [])
+
+    paddle_config = Keyword.get(existing_config, :paddle, [])
+    updated_paddle_config = Keyword.put(paddle_config, :webhook_secret, @test_secret)
+    new_config = Keyword.put(existing_config, :paddle, updated_paddle_config)
+
+    Application.put_env(:<%= @app_name %>, <%= @app_module %>.Billing, new_config)
 
     on_exit(fn ->
-      Application.delete_env(:<%= @app_name %>, <%= @app_module %>.Billing)
+      Application.put_env(:<%= @app_name %>, <%= @app_module %>.Billing, existing_config)
     end)
 
     :ok

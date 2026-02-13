@@ -1,5 +1,5 @@
 defmodule <%= @app_module %>.FeatureFlagsTest do
-  use <%= @app_module %>.DataCase, async: <%= @postgres_project? %>
+  use <%= @app_module %>.DataCase, async: <%= @postgres_project? %>, group: :feature_flags_cache
 
   alias <%= @app_module %>.FeatureFlags
   alias <%= @app_module %>.FeatureFlags.Schemas.FeatureFlag
