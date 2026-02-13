@@ -14,7 +14,8 @@ defmodule <%= @app_module %>.DefaultPolicy do
   alias <%= @web_module %>.{
     DashboardController,
     UserSettingsController,
-    BillingController
+    BillingController,
+    FeatureFlagController
   }
 
   # Admin can do anything
@@ -28,6 +29,15 @@ defmodule <%= @app_module %>.DefaultPolicy do
 
   # Billing — any authenticated user
   def authorize({BillingController, _action}, %Scope{user: %{}}, _ctx), do: :ok
+
+  # Featur flags — admin@demo.com
+  def authorize({FeatureFlagController, _action}, %Scope{user: user} = _scope, _ctx) do
+    if(user.email == "admin@demo.com") do
+      :ok
+    else
+      {:error, :unauthorized}
+    end
+  end
 
   # Default deny
   def authorize(_action, _scope, _ctx), do: {:error, :unauthorized}

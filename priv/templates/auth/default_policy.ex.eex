@@ -13,7 +13,8 @@ defmodule <%= @app_module %>.DefaultPolicy do
 
   alias <%= @web_module %>.{
     DashboardController,
-    UserSettingsController
+    UserSettingsController,
+    FeatureFlagController
   }
 
   # Admin can do anything
