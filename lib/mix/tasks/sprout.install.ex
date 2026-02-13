@@ -110,6 +110,10 @@ if Code.ensure_loaded?(Igniter) do
         test_path: test_path
       ]
 
+      postgres_project? = postgres_project?(assigns)
+
+      igniter = ensure_docker_ready_for_postgres!(igniter, postgres_project?)
+
       igniter
       |> configure_igniter_dont_move_controllers(assigns)
       |> Igniter.add_notice("""
@@ -127,6 +131,8 @@ if Code.ensure_loaded?(Igniter) do
       # Create dev environment files
       |> create_mise_toml()
       |> create_env_file()
+      |> create_compose_yml_if_postgres(postgres_project?, assigns)
+      |> configure_dev_db_for_postgres_compose(postgres_project?, assigns)
       # Create new Elixir files
       |> create_turbo_module(assigns)
       |> create_turbo_socket(assigns)
@@ -169,20 +175,28 @@ if Code.ensure_loaded?(Igniter) do
       # Optional: Add feature flags
       |> maybe_add_feature_flags(include_feature_flags?, assigns)
       # Run post-install tasks
-      |> run_post_install_tasks()
+      |> run_post_install_tasks(postgres_project?)
       |> add_final_notice(
         include_examples?,
         include_auth?,
         include_payments?,
-        include_feature_flags?
+        include_feature_flags?,
+        postgres_project?
       )
     end
 
-    defp run_post_install_tasks(igniter) do
+    defp run_post_install_tasks(igniter, postgres_project?) do
       igniter
       |> Igniter.add_task("deps.get")
       |> Igniter.add_task("assets.setup")
+      |> maybe_add_docker_compose_task(postgres_project?)
       |> Igniter.add_task("ecto.migrate")
+    end
+
+    defp maybe_add_docker_compose_task(igniter, false), do: igniter
+
+    defp maybe_add_docker_compose_task(igniter, true) do
+      Igniter.add_task(igniter, "cmd", ["docker", "compose", "up", "-d"])
     end
 
     @impl Mix.Task
@@ -210,7 +224,8 @@ if Code.ensure_loaded?(Igniter) do
            include_examples?,
            _include_auth?,
            include_payments?,
-           include_feature_flags?
+           include_feature_flags?,
+           postgres_project?
          ) do
       Igniter.add_notice(igniter, """
 
@@ -219,7 +234,8 @@ if Code.ensure_loaded?(Igniter) do
       Next steps:
       1. Run `mise trust && mise install` to set up the dev environment
       2. Restart your Phoenix server
-      #{if include_examples?, do: "3. Visit /turbo-example to see Turbo in action", else: ""}
+      #{if include_examples?, do: "- Visit /turbo-example to see Turbo in action", else: ""}
+      #{if postgres_project?, do: "- Start development services with `docker compose up -d`", else: ""}
       #{if include_payments?, do: "\n    For payments setup:\n    - Set PADDLE_API_KEY, PADDLE_WEBHOOK_SECRET, and PADDLE_CLIENT_TOKEN environment variables\n    - Configure products in the database\n    - Visit /billing to see the billing dashboard", else: ""}
       #{if include_feature_flags?, do: "\n    For feature flags:\n    - Visit /admin/feature-flags to manage feature flags\n    - Use FeatureFlags.enabled?(\"flag_name\") to check flags in code\n    - Use the RequireFeature plug to gate routes", else: ""}
 
@@ -312,6 +328,81 @@ if Code.ensure_loaded?(Igniter) do
     defp create_env_file(igniter) do
       content = read_template(".env.example")
       Igniter.create_new_file(igniter, ".env", content, on_exists: :skip)
+    end
+
+    defp create_compose_yml_if_postgres(igniter, false, _assigns), do: igniter
+
+    defp create_compose_yml_if_postgres(igniter, true, assigns) do
+      content = render_template("compose.yml.eex", assigns)
+      Igniter.create_new_file(igniter, "compose.yml", content, on_exists: :skip)
+    end
+
+    defp configure_dev_db_for_postgres_compose(igniter, false, _assigns), do: igniter
+
+    defp configure_dev_db_for_postgres_compose(igniter, true, assigns) do
+      app_name = String.to_atom(assigns[:app_name])
+      repo_module = Module.concat([assigns[:app_module], "Repo"])
+
+      igniter
+      |> Igniter.Project.Config.configure("dev.exs", app_name, [repo_module, :username], "user")
+      |> Igniter.Project.Config.configure(
+        "dev.exs",
+        app_name,
+        [repo_module, :password],
+        "password"
+      )
+      |> Igniter.Project.Config.configure(
+        "dev.exs",
+        app_name,
+        [repo_module, :database],
+        "#{assigns[:app_name]}_dev"
+      )
+    end
+
+    defp postgres_project?(assigns) do
+      repo_path = "#{assigns[:app_path]}/repo.ex"
+
+      case File.read(repo_path) do
+        {:ok, content} -> String.contains?(content, "adapter: Ecto.Adapters.Postgres")
+        {:error, _reason} -> false
+      end
+    end
+
+    defp ensure_docker_ready_for_postgres!(igniter, false), do: igniter
+
+    defp ensure_docker_ready_for_postgres!(igniter, true) do
+      Mix.shell().info("""
+
+      Docker requirement for development services
+      ------------------------------------------
+      Sprout will add `compose.yml` for PostgreSQL 18 and ngrok.
+      Docker Desktop/Engine must be installed and running.
+      """)
+
+      if docker_running?() do
+        if igniter.args.options[:yes] ||
+             Igniter.Util.IO.yes?("Docker is running. Continue with Sprout installation?") do
+          igniter
+        else
+          Mix.raise(
+            "Installation cancelled. Start Docker and run `mix sprout.install` again when ready."
+          )
+        end
+      else
+        Mix.raise(
+          "Docker is required for dev services but is not running. Start Docker and rerun `mix sprout.install`."
+        )
+      end
+    end
+
+    defp docker_running? do
+      case System.cmd("docker", ["info"], stderr_to_stdout: true) do
+        {_output, 0} -> true
+        {_output, _exit_code} -> false
+      end
+    rescue
+      _ ->
+        false
     end
 
     # ============================================================================
