@@ -373,14 +373,23 @@ if Code.ensure_loaded?(Igniter) do
       ------------------------------------------
       """)
 
-      if not docker_running?() and
-           Igniter.Util.IO.yes?("Docker is not running. Continue with Sprout installation?") do
-        igniter
-      else
+      if docker_running?() do
         Mix.shell().info("""
-        Docker is running ✓
+        Docker is running ✅
         ------------------------------------------
         """)
+
+        igniter
+      else
+        if Igniter.Util.IO.yes?(
+             "Docker is not running ❌. Please start Docker before proceeding. Continue?"
+           ) do
+          igniter
+        else
+          Mix.raise(
+            "Sprout installation aborted: Docker is required for PostgreSQL development services."
+          )
+        end
       end
     end
 
