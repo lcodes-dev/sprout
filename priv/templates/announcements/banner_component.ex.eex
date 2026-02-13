@@ -42,7 +42,7 @@ defmodule <%= @web_module %>.Components.AnnouncementBanner do
       >
         <div
           class="relative w-full transition-all duration-300"
-          :style="`min-height: ${containerHeight}px`"
+          x-bind:style="`min-height: ${containerHeight}px`"
         >
           <%%= for {banner, index} <- Enum.with_index(@banners) do %>
             <div
