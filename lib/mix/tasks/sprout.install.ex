@@ -225,7 +225,7 @@ defmodule Mix.Tasks.Sprout.Install do
     Optional cleanup:
     - Remove empty folder: rm -rf lib/*_web/controllers/page_html
 
-    Documentation: https://github.com/yourusername/sprout
+    Documentation: https://github.com/lcodes-dev/sprout
     """)
   end
 
