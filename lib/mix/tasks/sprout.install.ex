@@ -2549,13 +2549,13 @@ if Code.ensure_loaded?(Igniter) do
           "dev.exs",
           :phoenix_analytics,
           [:app_domain],
-          {:code, Sourceror.parse_string!(~s|System.get_env("PHX_HOST") || "example.com"|)}
+          {:code, Sourceror.parse_string!(~s(System.get_env("PHX_HOST") || "example.com"))}
         )
         |> Igniter.Project.Config.configure(
           "dev.exs",
           :phoenix_analytics,
           [:cache_ttl],
-          {:code, Sourceror.parse_string!(~s|System.get_env("CACHE_TTL") || 60|)}
+          {:code, Sourceror.parse_string!(~s(System.get_env("CACHE_TTL") || 60))}
         )
 
       # 3. Create main migration
