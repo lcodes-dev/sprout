@@ -134,6 +134,7 @@ if Code.ensure_loaded?(Igniter) do
       |> create_env_file()
       |> create_compose_yml_if_postgres(postgres_project?, assigns)
       |> configure_dev_db_for_postgres_compose(postgres_project?, assigns)
+      |> configure_test_db_for_postgres_compose(postgres_project?, assigns)
       # Create new Elixir files
       |> create_turbo_module(assigns)
       |> create_turbo_socket(assigns)
@@ -344,11 +345,32 @@ if Code.ensure_loaded?(Igniter) do
         [repo_module, :port],
         5433
       )
+    end
+
+    defp configure_test_db_for_postgres_compose(igniter, false, _assigns), do: igniter
+
+    defp configure_test_db_for_postgres_compose(igniter, true, assigns) do
+      app_name = String.to_atom(assigns[:app_name])
+      repo_module = Module.concat([assigns[:app_module], "Repo"])
+
+      igniter
       |> Igniter.Project.Config.configure(
-        "dev.exs",
+        "test.exs",
         app_name,
-        [repo_module, :database],
-        "#{assigns[:app_name]}_dev"
+        [repo_module, :username],
+        "postgres"
+      )
+      |> Igniter.Project.Config.configure(
+        "test.exs",
+        app_name,
+        [repo_module, :password],
+        "password"
+      )
+      |> Igniter.Project.Config.configure(
+        "test.exs",
+        app_name,
+        [repo_module, :port],
+        5433
       )
     end
 
