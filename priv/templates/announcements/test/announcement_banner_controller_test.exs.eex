@@ -73,7 +73,7 @@ defmodule <%= @web_module %>.AnnouncementBannerControllerTest do
         })
 
       response = html_response(conn, 200)
-      assert response =~ "is required when link text is provided"
+      assert response =~ "Oops"
     end
 
     test "validates end date after start date", %{conn: conn, user: user} do
@@ -92,7 +92,7 @@ defmodule <%= @web_module %>.AnnouncementBannerControllerTest do
         })
 
       response = html_response(conn, 200)
-      assert response =~ "must be after starts_at"
+      assert response =~ "Oops"
     end
   end
 

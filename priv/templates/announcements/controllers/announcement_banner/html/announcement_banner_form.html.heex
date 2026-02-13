@@ -62,19 +62,23 @@
         ]}
       />
 
-      <.input
-        field={@form[:starts_at]}
-        type="datetime-local"
-        label="Starts At (UTC)"
-        helper_text="Leave empty to start immediately"
-      />
+      <div>
+        <.input
+          field={@form[:starts_at]}
+          type="datetime-local"
+          label="Starts At (UTC)"
+        />
+        <p class="mt-1 text-sm text-muted-foreground">Leave empty to start immediately</p>
+      </div>
 
-      <.input
-        field={@form[:ends_at]}
-        type="datetime-local"
-        label="Ends At (UTC)"
-        helper_text="Leave empty to never expire"
-      />
+      <div>
+        <.input
+          field={@form[:ends_at]}
+          type="datetime-local"
+          label="Ends At (UTC)"
+        />
+        <p class="mt-1 text-sm text-muted-foreground">Leave empty to never expire</p>
+      </div>
 
       <.input
         field={@form[:is_active]}
