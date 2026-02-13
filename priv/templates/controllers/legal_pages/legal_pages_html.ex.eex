@@ -1,0 +1,10 @@
+defmodule <%= @web_module %>.LegalPagesHTML do
+  @moduledoc """
+  This module contains pages rendered by LegalPagesController.
+
+  See the `html` directory for all templates available.
+  """
+  use <%= @web_module %>, :html
+
+  embed_templates "html/*"
+end

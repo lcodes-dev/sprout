@@ -98,7 +98,8 @@ defmodule <%= @web_module %>.Layouts do
             <div>
               <h3 class="text-sm font-semibold mb-4">Legal</h3>
               <ul class="space-y-2 text-sm text-muted-foreground">
-                <li><a href="#" class="hover:text-foreground">Example link 4</a></li>
+                <li><a href={~p"/privacy"} class="hover:text-foreground">Privacy Policy</a></li>
+                <li><a href={~p"/terms"} class="hover:text-foreground">Terms and Conditions</a></li>
               </ul>
             </div>
           </div>

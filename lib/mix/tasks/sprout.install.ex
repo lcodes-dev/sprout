@@ -165,6 +165,9 @@ if Code.ensure_loaded?(Igniter) do
       |> create_home_controller(assigns)
       |> update_home_route(assigns)
       |> remove_page_controller(assigns)
+      # Install static pages (privacy, terms)
+      |> create_legal_pages_controller(assigns)
+      |> add_legal_pages_routes(assigns)
       |> copy_logo_image()
       # Remove DaisyUI files
       |> remove_daisyui_files()
@@ -784,6 +787,77 @@ if Code.ensure_loaded?(Igniter) do
       |> Igniter.rm("#{web_path}/controllers/page_html/home.html.heex")
       |> Igniter.rm("#{web_path}/controllers/page_controller.ex")
       |> Igniter.rm("#{test_path}/#{app_name}_web/controllers/page_controller_test.exs")
+    end
+
+    # ============================================================================
+    # Install Legal Pages Controller (privacy, terms)
+    # ============================================================================
+
+    defp create_legal_pages_controller(igniter, assigns) do
+      web_path = assigns[:web_path]
+
+      controller_content =
+        render_template("controllers/legal_pages/legal_pages_controller.ex.eex", assigns)
+
+      html_content =
+        render_template("controllers/legal_pages/legal_pages_html.ex.eex", assigns)
+
+      privacy_template =
+        File.read!(template_path("controllers/legal_pages/html/privacy.html.heex"))
+
+      terms_template =
+        File.read!(template_path("controllers/legal_pages/html/terms.html.heex"))
+
+      igniter
+      |> Igniter.create_new_file(
+        "#{web_path}/controllers/legal_pages/legal_pages_controller.ex",
+        controller_content,
+        on_exists: :skip
+      )
+      |> Igniter.create_new_file(
+        "#{web_path}/controllers/legal_pages/legal_pages_html.ex",
+        html_content,
+        on_exists: :skip
+      )
+      |> Igniter.create_new_file(
+        "#{web_path}/controllers/legal_pages/html/privacy.html.heex",
+        privacy_template,
+        on_exists: :skip
+      )
+      |> Igniter.create_new_file(
+        "#{web_path}/controllers/legal_pages/html/terms.html.heex",
+        terms_template,
+        on_exists: :skip
+      )
+    end
+
+    defp add_legal_pages_routes(igniter, assigns) do
+      web_module = assigns[:web_module]
+
+      igniter
+      |> Igniter.Project.Module.find_and_update_module!(
+        Module.concat([web_module, "Router"]),
+        fn zipper ->
+          node_string =
+            zipper
+            |> Sourceror.Zipper.topmost()
+            |> Sourceror.Zipper.node()
+            |> Sourceror.to_string()
+
+          if String.contains?(node_string, "LegalPagesController") do
+            {:ok, zipper}
+          else
+            updated_string =
+              String.replace(
+                node_string,
+                ~r/(get "\/", HomeController, :index)/,
+                "\\1\n    get \"/privacy\", LegalPagesController, :privacy\n    get \"/terms\", LegalPagesController, :terms"
+              )
+
+            {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
+          end
+        end
+      )
     end
 
     defp copy_logo_image(igniter) do
