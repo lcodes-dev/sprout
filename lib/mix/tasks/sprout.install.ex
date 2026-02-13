@@ -190,6 +190,7 @@ if Code.ensure_loaded?(Igniter) do
       igniter
       |> Igniter.add_task("deps.get")
       |> Igniter.add_task("assets.setup")
+      |> Igniter.add_task("cmd", ["npm", "install", "--prefix", "assets"])
       |> maybe_add_docker_compose_task(postgres_project?)
       |> Igniter.add_task("ecto.migrate")
     end
@@ -198,26 +199,6 @@ if Code.ensure_loaded?(Igniter) do
 
     defp maybe_add_docker_compose_task(igniter, true) do
       Igniter.add_task(igniter, "cmd", ["docker", "compose", "up", "-d"])
-    end
-
-    @impl Mix.Task
-    def run(argv) do
-      result = super(argv)
-
-      # Run npm install in assets directory after all Igniter tasks complete
-      Mix.shell().info("\nInstalling npm dependencies in assets/...")
-
-      case System.cmd("npm", ["install"], cd: "assets", stderr_to_stdout: true) do
-        {output, 0} ->
-          Mix.shell().info(output)
-          Mix.shell().info("npm dependencies installed successfully.")
-
-        {output, _exit_code} ->
-          Mix.shell().error("Failed to install npm dependencies:")
-          Mix.shell().error(output)
-      end
-
-      result
     end
 
     defp add_final_notice(
@@ -345,12 +326,23 @@ if Code.ensure_loaded?(Igniter) do
       repo_module = Module.concat([assigns[:app_module], "Repo"])
 
       igniter
-      |> Igniter.Project.Config.configure("dev.exs", app_name, [repo_module, :username], "user")
+      |> Igniter.Project.Config.configure(
+        "dev.exs",
+        app_name,
+        [repo_module, :username],
+        "postgres"
+      )
       |> Igniter.Project.Config.configure(
         "dev.exs",
         app_name,
         [repo_module, :password],
         "password"
+      )
+      |> Igniter.Project.Config.configure(
+        "dev.exs",
+        app_name,
+        [repo_module, :port],
+        5433
       )
       |> Igniter.Project.Config.configure(
         "dev.exs",
