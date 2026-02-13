@@ -28,7 +28,7 @@ defmodule Sprout.MixProject do
 
   defp deps do
     [
-      {:igniter, "~> 0.7", only: [:dev, :test]},
+      {:igniter, "~> 0.7"},
       {:ex_doc, "~> 0.31", only: :dev, runtime: false}
     ]
   end
