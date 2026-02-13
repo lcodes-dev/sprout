@@ -2574,33 +2574,8 @@ if Code.ensure_loaded?(Igniter) do
           {:code, Sourceror.parse_string!(~s{System.get_env("CACHE_TTL") || 60})}
         )
 
-      # 2c. Add config to test.exs (with enabled: false to prevent it from running)
-      igniter =
-        igniter
-        |> Igniter.Project.Config.configure(
-          "test.exs",
-          :phoenix_analytics,
-          [:repo],
-          {:code, Sourceror.parse_string!("#{app_module}.Repo")}
-        )
-        |> Igniter.Project.Config.configure(
-          "test.exs",
-          :phoenix_analytics,
-          [:app_domain],
-          {:code, Sourceror.parse_string!(~s{System.get_env("PHX_HOST") || "example.com"})}
-        )
-        |> Igniter.Project.Config.configure(
-          "test.exs",
-          :phoenix_analytics,
-          [:cache_ttl],
-          {:code, Sourceror.parse_string!(~s{System.get_env("CACHE_TTL") || 60})}
-        )
-        |> Igniter.Project.Config.configure(
-          "test.exs",
-          :phoenix_analytics,
-          [:enabled],
-          false
-        )
+      # Note: We don't configure phoenix_analytics in test.exs
+      # The plug will check for config presence and skip loading in test
 
       # 3. Create main migration
       timestamp1 = next_migration_timestamp()
@@ -2649,7 +2624,11 @@ if Code.ensure_loaded?(Igniter) do
       web_module = assigns[:web_module]
       endpoint_module = Module.concat([web_module, "Endpoint"])
 
-      plug_code = "plug PhoenixAnalytics.Plugs.RequestTracker"
+      plug_code = """
+      if Application.compile_env(:phoenix_analytics, :repo, nil) do
+        plug PhoenixAnalytics.Plugs.RequestTracker
+      end
+      """
 
       igniter
       |> Igniter.Project.Module.find_and_update_module!(endpoint_module, fn zipper ->
