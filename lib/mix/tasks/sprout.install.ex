@@ -2658,8 +2658,13 @@ if Code.ensure_loaded?(Igniter) do
         else
           # Find Plug.Static and add the RequestTracker plug after it
           case Igniter.Code.Common.move_to(zipper, fn z ->
-                 Igniter.Code.Function.function_call?(z, :plug, 2) and
-                   Igniter.Code.Common.node_matches_pattern?(z, {:plug, :_, [{:__aliases__, :_, [:Plug, :Static]} | :_]})
+                 case Sourceror.Zipper.node(z) do
+                   {:plug, _, [{:__aliases__, _, [:Plug, :Static]} | _]} ->
+                     true
+
+                   _ ->
+                     false
+                 end
                end) do
             {:ok, static_zipper} ->
               {:ok,
