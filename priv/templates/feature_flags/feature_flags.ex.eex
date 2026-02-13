@@ -2,9 +2,9 @@ defmodule <%= @app_module %>.FeatureFlags do
   @moduledoc """
   The FeatureFlags context.
 
-  Provides a simple, database-backed feature flag system with ETS caching
-  for fast lookups. Flags can be simple on/off toggles or include rules
-  for percentage-based rollouts and actor targeting.
+  Provides a simple, database-backed feature flag system.
+  Flags can be simple on/off toggles or include rules for percentage-based
+  rollouts and actor targeting.
 
   ## Checking Flags
 
@@ -31,22 +31,11 @@ defmodule <%= @app_module %>.FeatureFlags do
       # Combine rules (actor IDs checked first, then percentage)
       FeatureFlags.update_flag(flag, %{rules: %{"actor_ids" => [1], "percentage" => 50}})
 
-  ## Caching
-
-  Flags are cached in ETS for fast reads. The cache refreshes automatically
-  on a configurable interval and is also refreshed immediately when flags
-  are created, updated, or deleted through this context.
-
-  Configure the refresh interval:
-
-      config :<%= @app_name %>, <%= @app_module %>.FeatureFlags,
-        cache_refresh_interval: :timer.minutes(1)
   """
 
   import Ecto.Query
 
   alias <%= @app_module %>.Repo
-  alias <%= @app_module %>.FeatureFlags.Cache
   alias <%= @app_module %>.FeatureFlags.Schemas.FeatureFlag
 
   # ============================================================================
@@ -56,7 +45,7 @@ defmodule <%= @app_module %>.FeatureFlags do
   @doc """
   Checks if a feature flag is enabled.
 
-  Uses the ETS cache for fast lookups. Returns `false` if the flag doesn't exist.
+  Returns `false` if the flag doesn't exist.
 
   ## Examples
 
@@ -67,7 +56,7 @@ defmodule <%= @app_module %>.FeatureFlags do
       false
   """
   def enabled?(name) when is_binary(name) do
-    case Cache.get(name) do
+    case get_flag(name) do
       %FeatureFlag{enabled: true} -> true
       _ -> false
     end
@@ -94,7 +83,7 @@ defmodule <%= @app_module %>.FeatureFlags do
       false
   """
   def enabled_for?(name, actor_id) when is_binary(name) and is_integer(actor_id) do
-    case Cache.get(name) do
+    case get_flag(name) do
       %FeatureFlag{enabled: true, rules: rules} when map_size(rules) > 0 ->
         check_rules(name, actor_id, rules)
 
@@ -175,17 +164,9 @@ defmodule <%= @app_module %>.FeatureFlags do
       {:error, %Ecto.Changeset{}}
   """
   def create_flag(attrs) do
-    result =
-      %FeatureFlag{}
-      |> FeatureFlag.changeset(attrs)
-      |> Repo.insert()
-
-    case result do
-      {:ok, _flag} -> Cache.refresh()
-      _ -> :ok
-    end
-
-    result
+    %FeatureFlag{}
+    |> FeatureFlag.changeset(attrs)
+    |> Repo.insert()
   end
 
   @doc """
@@ -197,17 +178,9 @@ defmodule <%= @app_module %>.FeatureFlags do
       {:ok, %FeatureFlag{}}
   """
   def update_flag(%FeatureFlag{} = flag, attrs) do
-    result =
-      flag
-      |> FeatureFlag.changeset(attrs)
-      |> Repo.update()
-
-    case result do
-      {:ok, _flag} -> Cache.refresh()
-      _ -> :ok
-    end
-
-    result
+    flag
+    |> FeatureFlag.changeset(attrs)
+    |> Repo.update()
   end
 
   @doc """
@@ -219,14 +192,7 @@ defmodule <%= @app_module %>.FeatureFlags do
       {:ok, %FeatureFlag{}}
   """
   def delete_flag(%FeatureFlag{} = flag) do
-    result = Repo.delete(flag)
-
-    case result do
-      {:ok, _flag} -> Cache.refresh()
-      _ -> :ok
-    end
-
-    result
+    Repo.delete(flag)
   end
 
   @doc """

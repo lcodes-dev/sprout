@@ -1,18 +1,10 @@
 defmodule <%= @app_module %>.FeatureFlagsTest do
-  use <%= @app_module %>.DataCase, async: <%= @postgres_project? %>, group: :feature_flags_cache
+  use <%= @app_module %>.DataCase, async: <%= @postgres_project? %>
 
   alias <%= @app_module %>.FeatureFlags
   alias <%= @app_module %>.FeatureFlags.Schemas.FeatureFlag
 
   import <%= @app_module %>.FeatureFlagsFixtures
-
-  setup do
-    # Ensure cache is refreshed before each test
-    FeatureFlags.Cache.refresh()
-    # Small delay to allow async cache refresh
-    Process.sleep(50)
-    :ok
-  end
 
   describe "enabled?/1" do
     test "returns false for nonexistent flag" do
@@ -21,16 +13,12 @@ defmodule <%= @app_module %>.FeatureFlagsTest do
 
     test "returns false for disabled flag" do
       _flag = feature_flag_fixture(%{name: "disabled_flag", enabled: false})
-      FeatureFlags.Cache.refresh()
-      Process.sleep(50)
 
       refute FeatureFlags.enabled?("disabled_flag")
     end
 
     test "returns true for enabled flag" do
       _flag = enabled_flag_fixture(%{name: "enabled_flag"})
-      FeatureFlags.Cache.refresh()
-      Process.sleep(50)
 
       assert FeatureFlags.enabled?("enabled_flag")
     end
@@ -43,24 +31,18 @@ defmodule <%= @app_module %>.FeatureFlagsTest do
 
     test "returns false for disabled flag" do
       _flag = feature_flag_fixture(%{name: "disabled", enabled: false})
-      FeatureFlags.Cache.refresh()
-      Process.sleep(50)
 
       refute FeatureFlags.enabled_for?("disabled", 1)
     end
 
     test "returns true for enabled flag without rules" do
       _flag = enabled_flag_fixture(%{name: "no_rules"})
-      FeatureFlags.Cache.refresh()
-      Process.sleep(50)
 
       assert FeatureFlags.enabled_for?("no_rules", 1)
     end
 
     test "returns true when actor_id is in actor_ids list" do
       _flag = actor_targeted_flag_fixture([1, 2, 3], %{name: "targeted"})
-      FeatureFlags.Cache.refresh()
-      Process.sleep(50)
 
       assert FeatureFlags.enabled_for?("targeted", 1)
       assert FeatureFlags.enabled_for?("targeted", 2)
@@ -73,8 +55,6 @@ defmodule <%= @app_module %>.FeatureFlagsTest do
         enabled: true,
         rules: %{"actor_ids" => [1, 2]}
       })
-      FeatureFlags.Cache.refresh()
-      Process.sleep(50)
 
       # Actor 99 is not in list, but since there's no percentage rule,
       # the flag falls through to the default "enabled = true" case
@@ -85,8 +65,6 @@ defmodule <%= @app_module %>.FeatureFlagsTest do
 
     test "percentage rollout gives consistent results for same actor" do
       _flag = percentage_flag_fixture(50, %{name: "fifty_percent"})
-      FeatureFlags.Cache.refresh()
-      Process.sleep(50)
 
       # Same actor should always get same result
       result1 = FeatureFlags.enabled_for?("fifty_percent", 42)
@@ -96,8 +74,6 @@ defmodule <%= @app_module %>.FeatureFlagsTest do
 
     test "percentage rollout at 100 enables for all actors" do
       _flag = percentage_flag_fixture(100, %{name: "full_rollout"})
-      FeatureFlags.Cache.refresh()
-      Process.sleep(50)
 
       Enum.each(1..20, fn actor_id ->
         assert FeatureFlags.enabled_for?("full_rollout", actor_id)
@@ -106,8 +82,6 @@ defmodule <%= @app_module %>.FeatureFlagsTest do
 
     test "percentage rollout at 0 disables for all actors" do
       _flag = percentage_flag_fixture(0, %{name: "no_rollout"})
-      FeatureFlags.Cache.refresh()
-      Process.sleep(50)
 
       Enum.each(1..20, fn actor_id ->
         refute FeatureFlags.enabled_for?("no_rollout", actor_id)
@@ -120,8 +94,6 @@ defmodule <%= @app_module %>.FeatureFlagsTest do
         enabled: true,
         rules: %{"actor_ids" => [42], "percentage" => 0}
       })
-      FeatureFlags.Cache.refresh()
-      Process.sleep(50)
 
       # Actor 42 is in the list, so it should be enabled even with 0% rollout
       assert FeatureFlags.enabled_for?("combined", 42)

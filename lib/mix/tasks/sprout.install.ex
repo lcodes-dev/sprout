@@ -2142,15 +2142,11 @@ if Code.ensure_loaded?(Igniter) do
       igniter
       |> create_feature_flags_context(assigns)
       |> create_feature_flag_schema(assigns)
-      |> create_feature_flags_cache(assigns)
       |> create_require_feature_plug(assigns)
       |> create_feature_flag_controller(assigns)
       |> create_feature_flags_migration(assigns)
       |> create_feature_flags_tests(assigns)
-      |> update_application_for_feature_flags(assigns)
       |> update_router_for_feature_flags(assigns)
-      |> update_data_case_for_feature_flags(assigns)
-      |> add_feature_flags_config(assigns)
     end
 
     defp create_feature_flags_context(igniter, assigns) do
@@ -2165,12 +2161,6 @@ if Code.ensure_loaded?(Igniter) do
       content =
         render_template("feature_flags/feature_flags/schemas/feature_flag.ex.eex", assigns)
 
-      Igniter.create_new_file(igniter, path, content, on_exists: :skip)
-    end
-
-    defp create_feature_flags_cache(igniter, assigns) do
-      path = "#{assigns[:app_path]}/feature_flags/cache.ex"
-      content = render_template("feature_flags/feature_flags/cache.ex.eex", assigns)
       Igniter.create_new_file(igniter, path, content, on_exists: :skip)
     end
 
@@ -2275,41 +2265,6 @@ if Code.ensure_loaded?(Igniter) do
       )
     end
 
-    defp update_application_for_feature_flags(igniter, assigns) do
-      app_module = Module.concat([assigns[:app_module], "Application"])
-      cache_module = "#{assigns[:app_module]}.FeatureFlags.Cache"
-
-      igniter
-      |> Igniter.Project.Module.find_and_update_module!(app_module, fn zipper ->
-        node_string =
-          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
-
-        if String.contains?(node_string, "FeatureFlags.Cache") do
-          {:ok, zipper}
-        else
-          # Add FeatureFlags.Cache to children list after the Repo (or after Oban if present)
-          updated_string =
-            cond do
-              String.contains?(node_string, "Oban") ->
-                String.replace(
-                  node_string,
-                  ~r/(\{Oban,[^}]+\},)/,
-                  "\\1\n      #{cache_module},"
-                )
-
-              true ->
-                String.replace(
-                  node_string,
-                  ~r/(#{assigns[:app_module]}\.Repo,)/,
-                  "\\1\n      #{cache_module},"
-                )
-            end
-
-          {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
-        end
-      end)
-    end
-
     defp update_router_for_feature_flags(igniter, assigns) do
       web_module = assigns[:web_module]
 
@@ -2372,61 +2327,6 @@ if Code.ensure_loaded?(Igniter) do
           end
         end
       )
-    end
-
-    defp add_feature_flags_config(igniter, assigns) do
-      app_name = String.to_atom(assigns[:app_name])
-      feature_flags_module = Module.concat([assigns[:app_module], "FeatureFlags"])
-
-      igniter
-      |> Igniter.Project.Config.configure(
-        "config.exs",
-        app_name,
-        [feature_flags_module, :cache_refresh_interval],
-        {:code, Sourceror.parse_string!(":timer.minutes(1)")}
-      )
-      |> Igniter.Project.Config.configure(
-        "test.exs",
-        app_name,
-        [feature_flags_module, :cache_refresh_interval],
-        {:code, Sourceror.parse_string!(":infinity")}
-      )
-    end
-
-    defp update_data_case_for_feature_flags(igniter, assigns) do
-      app_module = assigns[:app_module]
-      data_case_module = Module.concat([app_module, "DataCase"])
-
-      igniter
-      |> Igniter.Project.Module.find_and_update_module!(data_case_module, fn zipper ->
-        node_string =
-          zipper |> Sourceror.Zipper.topmost() |> Sourceror.Zipper.node() |> Sourceror.to_string()
-
-        if String.contains?(node_string, "FeatureFlags.Cache") do
-          {:ok, zipper}
-        else
-          sandbox_allow =
-            """
-
-                # Allow the FeatureFlags.Cache GenServer to share this test's DB connection
-                if cache_pid = Process.whereis(#{app_module}.FeatureFlags.Cache) do
-                  Ecto.Adapters.SQL.Sandbox.allow(#{app_module}.Repo, self(), cache_pid)
-                end
-            """
-
-          # Insert before the closing `end` of the setup_sandbox function.
-          # We match the on_exit call (last statement) followed by the function's end.
-          updated_string =
-            String.replace(
-              node_string,
-              ~r/(def setup_sandbox\(tags\) do\b.*?on_exit\(fn\s*->\s*.*?end\))((\s*\n\s+end))/s,
-              "\\1\n#{String.trim_trailing(sandbox_allow)}\\3",
-              global: false
-            )
-
-          {:ok, Igniter.Code.Common.parse_to_zipper!(updated_string)}
-        end
-      end)
     end
 
     defp update_default_policy_for_billing(igniter, assigns) do
