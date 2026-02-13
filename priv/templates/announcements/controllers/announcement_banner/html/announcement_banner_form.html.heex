@@ -54,6 +54,7 @@
         field={@form[:bg_color]}
         type="select"
         label="Background Color"
+        class="select"
         options={[
           {"Primary (Blue)", "primary"},
           {"Destructive (Red)", "destructive"},
@@ -61,24 +62,6 @@
           {"Info (Sky)", "info"}
         ]}
       />
-
-      <div>
-        <.input
-          field={@form[:starts_at]}
-          type="datetime-local"
-          label="Starts At (UTC)"
-        />
-        <p class="mt-1 text-sm text-muted-foreground">Leave empty to start immediately</p>
-      </div>
-
-      <div>
-        <.input
-          field={@form[:ends_at]}
-          type="datetime-local"
-          label="Ends At (UTC)"
-        />
-        <p class="mt-1 text-sm text-muted-foreground">Leave empty to never expire</p>
-      </div>
 
       <.input
         field={@form[:is_active]}

@@ -75,25 +75,6 @@ defmodule <%= @web_module %>.AnnouncementBannerControllerTest do
       response = html_response(conn, 200)
       assert response =~ "Oops"
     end
-
-    test "validates end date after start date", %{conn: conn, user: user} do
-      starts_at = DateTime.utc_now() |> DateTime.add(1, :day)
-      ends_at = DateTime.utc_now()
-
-      conn =
-        conn
-        |> log_in_user(user)
-        |> post(~p"/admin/announcement-banners", %{
-          "banner" => %{
-            "message" => "Test",
-            "starts_at" => DateTime.to_iso8601(starts_at),
-            "ends_at" => DateTime.to_iso8601(ends_at)
-          }
-        })
-
-      response = html_response(conn, 200)
-      assert response =~ "Oops"
-    end
   end
 
   describe "GET /admin/announcement-banners/:id/edit" do

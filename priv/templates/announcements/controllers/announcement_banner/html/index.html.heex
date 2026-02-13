@@ -66,17 +66,6 @@
                     Link: {banner.link_text} → {banner.link_url}
                   </div>
                 <% end %>
-
-                <%= if banner.starts_at || banner.ends_at do %>
-                  <div class="mt-1 flex gap-3 text-xs text-muted-foreground">
-                    <%= if banner.starts_at do %>
-                      <span>Starts: {Calendar.strftime(banner.starts_at, "%Y-%m-%d %H:%M UTC")}</span>
-                    <% end %>
-                    <%= if banner.ends_at do %>
-                      <span>Ends: {Calendar.strftime(banner.ends_at, "%Y-%m-%d %H:%M UTC")}</span>
-                    <% end %>
-                  </div>
-                <% end %>
               </div>
 
               <div class="flex items-center gap-2 ml-4">

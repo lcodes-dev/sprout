@@ -3,7 +3,7 @@ defmodule <%= @web_module %>.Components.AnnouncementBanner do
   Component for displaying announcement banners at the top of every page.
 
   Supports multiple banners with automatic rotation using Alpine.js.
-  Users can dismiss individual banners, which are tracked via localStorage.
+  Users can dismiss individual banners, which are tracked via sessionStorage.
   """
 
   use Phoenix.Component
@@ -19,7 +19,7 @@ defmodule <%= @web_module %>.Components.AnnouncementBanner do
   Renders announcement banners with rotation support.
 
   When multiple banners exist, they rotate automatically every 5 seconds.
-  Each banner can be dismissed by the user, tracked in localStorage.
+  Each banner can be dismissed by the user, tracked in sessionStorage.
 
   ## Examples
 
@@ -36,70 +36,75 @@ defmodule <%= @web_module %>.Components.AnnouncementBanner do
       <div
         id="announcement-banners"
         x-data={banner_alpine_data(@banners)}
-        x-init="startRotation()"
+        x-init="startRotation(); measureHeight()"
         x-show="visibleBanners.length > 0"
         x-cloak
-        class="relative"
       >
-        <%%= for {banner, index} <- Enum.with_index(@banners) do %>
-          <div
-            x-show={"currentIndex === #{index} && !dismissed.includes(#{banner.id})"}
-            x-transition:enter="transition ease-out duration-300"
-            x-transition:enter-start="opacity-0 -translate-y-1"
-            x-transition:enter-end="opacity-100 translate-y-0"
-            x-transition:leave="transition ease-in duration-200"
-            x-transition:leave-start="opacity-100 translate-y-0"
-            x-transition:leave-end="opacity-0 -translate-y-1"
-            class={"#{Map.get(@bg_color_classes, banner.bg_color, Map.get(@bg_color_classes, "primary"))}"}
-          >
-            <div class="mx-auto max-w-7xl px-3 py-2 sm:px-6 lg:px-8">
-              <div class="flex items-center justify-between gap-4">
-                <div class="flex-1 text-center text-sm font-medium">
-                  <span>{banner.message}</span>
-                  <%%= if banner.link_text && banner.link_url do %>
-                    <a href={banner.link_url} class="ml-2 underline underline-offset-2 font-semibold hover:opacity-80">
-                      {banner.link_text} &rarr;
-                    </a>
-                  <%% end %>
-                </div>
-                <div class="flex items-center gap-2">
-                  <button
-                    x-show="visibleBanners.length > 1"
-                    x-on:click="prev()"
-                    type="button"
-                    class="opacity-70 hover:opacity-100 transition-opacity"
-                    aria-label="Previous announcement"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="size-4" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
-                    </svg>
-                  </button>
-                  <button
-                    x-show="visibleBanners.length > 1"
-                    x-on:click="next()"
-                    type="button"
-                    class="opacity-70 hover:opacity-100 transition-opacity"
-                    aria-label="Next announcement"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="size-4" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                    </svg>
-                  </button>
-                  <button
-                    x-on:click={"dismiss(#{banner.id})"}
-                    type="button"
-                    class="opacity-70 hover:opacity-100 transition-opacity"
-                    aria-label="Dismiss announcement"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" class="size-4" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
-                    </svg>
-                  </button>
+        <div
+          class="relative w-full transition-all duration-300"
+          :style="`min-height: ${containerHeight}px`"
+        >
+          <%%= for {banner, index} <- Enum.with_index(@banners) do %>
+            <div
+              x-show={"currentIndex === #{index} && !dismissed.includes(#{banner.id})"}
+              x-transition:enter="transition ease-out duration-300"
+              x-transition:enter-start="opacity-0"
+              x-transition:enter-end="opacity-100"
+              x-transition:leave="transition ease-in duration-200"
+              x-transition:leave-start="opacity-100"
+              x-transition:leave-end="opacity-0"
+              x-ref={"banner_#{index}"}
+              class={"absolute inset-x-0 top-0 #{Map.get(@bg_color_classes, banner.bg_color, Map.get(@bg_color_classes, "primary"))}"}
+            >
+              <div class="mx-auto max-w-7xl px-3 py-2 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between gap-4">
+                  <div class="flex-1 text-center text-sm font-medium">
+                    <span>{banner.message}</span>
+                    <%%= if banner.link_text && banner.link_url do %>
+                      <a href={banner.link_url} class="ml-2 underline underline-offset-2 font-semibold hover:opacity-80">
+                        {banner.link_text} &rarr;
+                      </a>
+                    <%% end %>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button
+                      x-show="visibleBanners.length > 1"
+                      x-on:click="prev()"
+                      type="button"
+                      class="opacity-70 hover:opacity-100 transition-opacity"
+                      aria-label="Previous announcement"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" class="size-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clip-rule="evenodd" />
+                      </svg>
+                    </button>
+                    <button
+                      x-show="visibleBanners.length > 1"
+                      x-on:click="next()"
+                      type="button"
+                      class="opacity-70 hover:opacity-100 transition-opacity"
+                      aria-label="Next announcement"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" class="size-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                      </svg>
+                    </button>
+                    <button
+                      x-on:click={"dismiss(#{banner.id})"}
+                      type="button"
+                      class="opacity-70 hover:opacity-100 transition-opacity"
+                      aria-label="Dismiss announcement"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" class="size-4" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        <%% end %>
+          <%% end %>
+        </div>
       </div>
     <%% end %>
     """
@@ -113,10 +118,24 @@ defmodule <%= @web_module %>.Components.AnnouncementBanner do
     {
       allIds: #{ids_json},
       currentIndex: 0,
-      dismissed: JSON.parse(localStorage.getItem('dismissed_banners') || '[]'),
+      dismissed: JSON.parse(sessionStorage.getItem('dismissed_banners') || '[]'),
       interval: null,
+      containerHeight: 0,
       get visibleBanners() {
         return this.allIds.filter(id => !this.dismissed.includes(id))
+      },
+      measureHeight() {
+        this.$nextTick(() => {
+          let maxHeight = 0;
+          this.allIds.forEach((id, idx) => {
+            const el = this.$refs[`banner_${idx}`];
+            if (el) {
+              const height = el.offsetHeight;
+              if (height > maxHeight) maxHeight = height;
+            }
+          });
+          this.containerHeight = maxHeight;
+        });
       },
       startRotation() {
         if (this.visibleBanners.length > 1) {
@@ -137,7 +156,7 @@ defmodule <%= @web_module %>.Components.AnnouncementBanner do
       },
       dismiss(id) {
         this.dismissed.push(id);
-        localStorage.setItem('dismissed_banners', JSON.stringify(this.dismissed));
+        sessionStorage.setItem('dismissed_banners', JSON.stringify(this.dismissed));
         if (this.visibleBanners.length > 0) {
           this.next();
         }

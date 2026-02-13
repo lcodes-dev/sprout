@@ -180,6 +180,9 @@ if Code.ensure_loaded?(Igniter) do
       |> maybe_add_payments(include_payments? and include_auth?, assigns)
       # Optional: Add feature flags
       |> maybe_add_feature_flags(include_feature_flags?, assigns)
+      # Add monitoring dependencies
+      |> add_error_tracker()
+      |> add_phoenix_analytics(assigns)
       # Run post-install tasks
       |> run_post_install_tasks(postgres_project?)
       |> add_final_notice(
@@ -2515,6 +2518,78 @@ if Code.ensure_loaded?(Igniter) do
           end
         end
       )
+    end
+
+    # ============================================================================
+    # Monitoring Dependencies
+    # ============================================================================
+
+    defp add_error_tracker(igniter) do
+      Igniter.add_task(igniter, "igniter.install", ["error_tracker"])
+    end
+
+    defp add_phoenix_analytics(igniter, assigns) do
+      app_name = assigns[:app_name]
+      app_module = assigns[:app_module]
+      postgres? = assigns[:postgres_project?]
+
+      # 1. Add dependency
+      igniter = Igniter.Project.Deps.add_dep(igniter, {:phoenix_analytics, "~> 0.4"})
+
+      # 2. Add config to dev.exs
+      igniter =
+        igniter
+        |> Igniter.Project.Config.configure(
+          "dev.exs",
+          :phoenix_analytics,
+          [:repo],
+          {:code, Sourceror.parse_string!("#{app_module}.Repo")}
+        )
+        |> Igniter.Project.Config.configure(
+          "dev.exs",
+          :phoenix_analytics,
+          [:app_domain],
+          {:code, Sourceror.parse_string!(~s|System.get_env("PHX_HOST") || "example.com"|)}
+        )
+        |> Igniter.Project.Config.configure(
+          "dev.exs",
+          :phoenix_analytics,
+          [:cache_ttl],
+          {:code, Sourceror.parse_string!(~s|System.get_env("CACHE_TTL") || 60|)}
+        )
+
+      # 3. Create main migration
+      timestamp1 = next_migration_timestamp()
+      migration1_path = "priv/repo/migrations/#{timestamp1}_add_phoenix_analytics.exs"
+      migration1_content = """
+      defmodule #{app_module}.Repo.Migrations.AddPhoenixAnalytics do
+        use Ecto.Migration
+
+        def up, do: PhoenixAnalytics.Migration.up()
+        def down, do: PhoenixAnalytics.Migration.down()
+      end
+      """
+
+      igniter = Igniter.create_new_file(igniter, migration1_path, migration1_content, on_exists: :skip)
+
+      # 4. Create indexes migration (only for Postgres)
+      if postgres? do
+        timestamp2 = next_migration_timestamp()
+        migration2_path = "priv/repo/migrations/#{timestamp2}_add_phoenix_analytics_indexes.exs"
+        migration2_content = """
+        defmodule #{app_module}.Repo.Migrations.AddPhoenixAnalyticsIndexes do
+          use Ecto.Migration
+
+          def change do
+            PhoenixAnalytics.Migration.add_indexes()
+          end
+        end
+        """
+
+        Igniter.create_new_file(igniter, migration2_path, migration2_content, on_exists: :skip)
+      else
+        igniter
+      end
     end
 
     defp update_default_policy_for_billing(igniter, assigns) do

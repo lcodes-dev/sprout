@@ -3,7 +3,7 @@ defmodule <%= @app_module %>.Announcements do
   The Announcements context.
 
   Manages announcement banners that are displayed site-wide at the top of every page.
-  Banners can be scheduled with start/end dates and toggled active/inactive.
+  Banners can be toggled active/inactive.
   """
 
   import Ecto.Query, warn: false
@@ -29,10 +29,7 @@ defmodule <%= @app_module %>.Announcements do
   @doc """
   Returns the list of currently active banners.
 
-  A banner is considered active when:
-  - `is_active` is true
-  - `starts_at` is nil or in the past
-  - `ends_at` is nil or in the future
+  A banner is considered active when `is_active` is true.
 
   Results are ordered by most recently created first.
 
@@ -43,14 +40,7 @@ defmodule <%= @app_module %>.Announcements do
 
   """
   def list_active_banners do
-    now = DateTime.utc_now()
-
-    from(b in Banner,
-      where: b.is_active == true,
-      where: is_nil(b.starts_at) or b.starts_at <= ^now,
-      where: is_nil(b.ends_at) or b.ends_at > ^now,
-      order_by: [desc: b.inserted_at, desc: b.id]
-    )
+    from(b in Banner, where: b.is_active == true, order_by: [desc: b.inserted_at, desc: b.id])
     |> Repo.all()
   end
 
